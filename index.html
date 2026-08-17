@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🌊 TravelLog — Your Travel Companion</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+</head>
+<body>
+
+<div id="toastBox" class="toast-box"></div>
+
+<!-- LOGIN POPUP -->
+<div class="login-popup" id="loginPopup">
+    <div class="login-box">
+        <div class="login-wave"></div>
+        <div style="font-size:3.5rem;margin-bottom:10px;">🌊</div>
+        <h2>TravelLog</h2>
+        <p class="login-sub">Your Personal Travel Companion</p>
+        <input type="text" id="nameInput" class="logininput" placeholder="What's your name, explorer?" onkeydown="if(event.key==='Enter')saveName()">
+        <button class="btn primary fullwidth" onclick="saveName()">Start Exploring 🌍</button>
+        <p class="login-note">✨ Your journeys await!</p>
+    </div>
+</div>
+
+<!-- NAVBAR -->
+<nav class="topnav" id="topnav">
+    <span class="brand" onclick="navigate('home')">🌊 TravelLog</span>
+    <div class="navlinks">
+        <a onclick="navigate('home')">🏠 Home</a>
+        <a onclick="navigate('trips')">✈️ Trips</a>
+        <a onclick="navigate('newtrip')">➕ New Trip</a>
+        <a onclick="navigate('expenses')">💰 Expenses</a>
+        <a onclick="navigate('map')">🗺️ Map</a>
+        <a onclick="navigate('currency')">💱 Currency</a>
+    </div>
+    <button class="themebtn" onclick="switchTheme()">🌙</button>
+</nav>
+
+<!-- HOME -->
+<div id="home" class="pg show">
+    <div class="hero" id="hero">
+        <h1 id="heroGreeting">Welcome, Explorer! 🌊</h1>
+        <p id="heroMessage">Ready for your next adventure?</p>
+    </div>
+
+    <div class="statrow">
+        <div class="statcard">
+            <span class="bignum" id="stTrips">0</span>
+            <span>Trips</span>
+        </div>
+        <div class="statcard">
+            <span class="bignum" id="stPlaces">0</span>
+            <span>Places</span>
+        </div>
+        <div class="statcard">
+            <span class="bignum" id="stSpent">₹0</span>
+            <span>Total Spent</span>
+        </div>
+        <div class="statcard">
+            <span class="bignum" id="stDays">0</span>
+            <span>Days Traveled</span>
+        </div>
+    </div>
+
+    <div class="gridcards">
+        <div class="gcard" onclick="navigate('newtrip')">
+            <span class="gcicon">➕</span><h3>Plan New Trip</h3>
+        </div>
+        <div class="gcard" onclick="navigate('trips')">
+            <span class="gcicon">✈️</span><h3>My Trips</h3>
+        </div>
+        <div class="gcard" onclick="navigate('expenses')">
+            <span class="gcicon">💰</span><h3>Expenses</h3>
+        </div>
+        <div class="gcard" onclick="navigate('map')">
+            <span class="gcicon">🗺️</span><h3>World Map</h3>
+        </div>
+        <div class="gcard" onclick="navigate('currency')">
+            <span class="gcicon">💱</span><h3>Currency</h3>
+        </div>
+        <div class="gcard" onclick="navigate('bucket')">
+            <span class="gcicon">🎯</span><h3>Bucket List</h3>
+        </div>
+    </div>
+
+    <!-- Recent Trips -->
+    <div class="infobox">
+        <h3>🏖️ Recent Trips</h3>
+        <div id="recentTrips">
+            <p class="placeholder">No trips yet! Plan your first adventure! ✈️</p>
+        </div>
+    </div>
+</div>
+
+<!-- NEW TRIP -->
+<div id="newtrip" class="pg">
+    <h2>➕ Plan New Trip</h2>
+
+    <div class="infobox">
+        <h3>📋 Trip Details</h3>
+
+        <label>Trip Name *</label>
+        <input type="text" id="tripName" class="forminput" placeholder="e.g. Goa Beach Vacation">
+
+        <label>Destination *</label>
+        <input type="text" id="tripDest" class="forminput" placeholder="e.g. Goa, India">
+
+        <div class="tworow">
+            <div>
+                <label>Start Date *</label>
+                <input type="date" id="tripStart" class="forminput">
+            </div>
+            <div>
+                <label>End Date *</label>
+                <input type="date" id="tripEnd" class="forminput">
+            </div>
+        </div>
+
+        <label>Budget</label>
+        <div class="tworow">
+            <div>
+                <select id="tripCurrency" class="forminput">
+                    <option value="₹">₹ INR (Rupee)</option>
+                    <option value="$">$ USD (Dollar)</option>
+                    <option value="€">€ EUR (Euro)</option>
+                    <option value="£">£ GBP (Pound)</option>
+                    <option value="¥">¥ JPY (Yen)</option>
+                    <option value="A$">A$ AUD</option>
+                    <option value="C$">C$ CAD</option>
+                    <option value="฿">฿ THB (Baht)</option>
+                </select>
+            </div>
+            <div>
+                <input type="number" id="tripBudget" class="forminput" placeholder="e.g. 15000">
+            </div>
+        </div>
+
+        <label>Trip Type</label>
+        <select id="tripType" class="forminput">
+            <option value="🏖️ Beach">🏖️ Beach</option>
+            <option value="🏔️ Mountain">🏔️ Mountain</option>
+            <option value="🏙️ City">🏙️ City</option>
+            <option value="🏛️ Heritage">🏛️ Heritage</option>
+            <option value="🌿 Nature">🌿 Nature</option>
+            <option value="🎢 Adventure">🎢 Adventure</option>
+            <option value="🙏 Pilgrimage">🙏 Pilgrimage</option>
+            <option value="🍔 Food Tour">🍔 Food Tour</option>
+        </select>
+
+        <label>Notes</label>
+        <textarea id="tripNotes" class="forminput textarea" placeholder="Any extra notes..."></textarea>
+
+        <button class="btn primary fullwidth" onclick="saveTrip()" style="margin-top:12px;">✈️ Create Trip</button>
+    </div>
+
+    <!-- Itinerary Builder -->
+    <div class="infobox" id="itinerarySection" style="display:none;">
+        <h3>📅 Day-by-Day Itinerary</h3>
+        <div id="itineraryBuilder"></div>
+    </div>
+</div>
+
+<!-- MY TRIPS -->
+<div id="trips" class="pg">
+    <div class="pghead">
+        <h2>✈️ My Trips</h2>
+        <button class="btn primary" onclick="navigate('newtrip')">➕ New Trip</button>
+    </div>
+
+    <div class="filter-row">
+        <button class="filterbtn active" onclick="filterTrips('all', this)">All</button>
+        <button class="filterbtn" onclick="filterTrips('upcoming', this)">📅 Upcoming</button>
+        <button class="filterbtn" onclick="filterTrips('ongoing', this)">🟢 Ongoing</button>
+        <button class="filterbtn" onclick="filterTrips('completed', this)">✅ Completed</button>
+    </div>
+
+    <div id="tripsList" class="trips-grid"></div>
+</div>
+
+<!-- TRIP DETAIL VIEW -->
+<div id="tripview" class="pg">
+    <div class="pghead">
+        <h2 id="tvTitle">📍 Trip Details</h2>
+        <button class="btn" onclick="navigate('trips')">← Back</button>
+    </div>
+
+    <div class="trip-detail-header" id="tvHeader"></div>
+
+    <!-- Itinerary -->
+    <div class="infobox">
+        <div class="pghead" style="margin-bottom:10px;">
+            <h3>📅 Itinerary</h3>
+            <button class="btn small" onclick="addItineraryDay()">➕ Add Day</button>
+        </div>
+        <div id="tvItinerary"></div>
+    </div>
+
+    <!-- Trip Expenses -->
+    <div class="infobox">
+        <div class="pghead" style="margin-bottom:10px;">
+            <h3>💰 Trip Expenses</h3>
+            <button class="btn small" onclick="openExpenseForm()">➕ Add Expense</button>
+        </div>
+
+        <!-- Add Expense Form (hidden by default) -->
+        <div id="expenseForm" class="expense-form" style="display:none;">
+            <div class="tworow">
+                <div>
+                    <label>Description *</label>
+                    <input type="text" id="expDesc" class="forminput" placeholder="e.g. Lunch at beach">
+                </div>
+                <div>
+                    <label>Amount *</label>
+                    <input type="number" id="expAmount" class="forminput" placeholder="e.g. 500">
+                </div>
+            </div>
+            <div class="tworow">
+                <div>
+                    <label>Category</label>
+                    <select id="expCategory" class="forminput">
+                        <option value="🍔 Food">🍔 Food</option>
+                        <option value="🏨 Hotel">🏨 Hotel</option>
+                        <option value="🚗 Transport">🚗 Transport</option>
+                        <option value="🎟️ Tickets">🎟️ Tickets</option>
+                        <option value="🛍️ Shopping">🛍️ Shopping</option>
+                        <option value="⛽ Fuel">⛽ Fuel</option>
+                        <option value="💊 Medical">💊 Medical</option>
+                        <option value="📦 Other">📦 Other</option>
+                    </select>
+                </div>
+                <div>
+                    <label>Date</label>
+                    <input type="date" id="expDate" class="forminput">
+                </div>
+            </div>
+            <div class="btnrow">
+                <button class="btn primary" onclick="addExpense()">💾 Save</button>
+                <button class="btn" onclick="closeExpenseForm()">Cancel</button>
+            </div>
+        </div>
+
+        <!-- Expense Summary -->
+        <div id="tvExpenseSummary" class="expense-summary"></div>
+
+        <!-- Expense List -->
+        <div id="tvExpenseList"></div>
+    </div>
+</div>
+
+<!-- ALL EXPENSES -->
+<div id="expenses" class="pg">
+    <h2>💰 All Expenses</h2>
+
+    <div class="statrow">
+        <div class="statcard">
+            <span class="bignum" id="totalSpentAll">₹0</span>
+            <span>Total Spent</span>
+        </div>
+        <div class="statcard">
+            <span class="bignum" id="totalBudgetAll">₹0</span>
+            <span>Total Budget</span>
+        </div>
+        <div class="statcard">
+            <span class="bignum" id="totalRemainingAll">₹0</span>
+            <span>Remaining</span>
+        </div>
+    </div>
+
+    <!-- Expense by Category Chart -->
+    <div class="infobox">
+        <h3>📊 Spending by Category</h3>
+        <div id="categoryChart" class="category-chart"></div>
+    </div>
+
+    <!-- All Expenses List -->
+    <div class="infobox">
+        <h3>📋 All Transactions</h3>
+        <div id="allExpensesList"></div>
+    </div>
+</div>
+
+<!-- MAP -->
+<div id="map" class="pg">
+    <h2>🗺️ My Travel Map</h2>
+    <div class="infobox" style="padding:0;overflow:hidden;border-radius:15px;">
+        <div id="travelMap" style="height:500px;width:100%;border-radius:15px;"></div>
+    </div>
+    <div class="infobox" style="margin-top:14px;">
+        <h3>📍 Places Visited</h3>
+        <div id="placesList"></div>
+    </div>
+</div>
+
+<!-- CURRENCY CONVERTER -->
+<div id="currency" class="pg">
+    <h2>💱 Currency Converter</h2>
+
+    <div class="infobox">
+        <h3>🔄 Convert Currency</h3>
+        <label>Amount</label>
+        <input type="number" id="currAmount" class="forminput" placeholder="Enter amount" value="1000" oninput="convertCurrency()">
+
+        <div class="tworow">
+            <div>
+                <label>From</label>
+                <select id="currFrom" class="forminput" onchange="convertCurrency()">
+                    <option value="INR" selected>🇮🇳 INR (Rupee)</option>
+                    <option value="USD">🇺🇸 USD (Dollar)</option>
+                    <option value="EUR">🇪🇺 EUR (Euro)</option>
+                    <option value="GBP">🇬🇧 GBP (Pound)</option>
+                    <option value="JPY">🇯🇵 JPY (Yen)</option>
+                    <option value="AUD">🇦🇺 AUD (Dollar)</option>
+                    <option value="CAD">🇨🇦 CAD (Dollar)</option>
+                    <option value="THB">🇹🇭 THB (Baht)</option>
+                    <option value="SGD">🇸🇬 SGD (Dollar)</option>
+                    <option value="AED">🇦🇪 AED (Dirham)</option>
+                    <option value="MYR">🇲🇾 MYR (Ringgit)</option>
+                    <option value="LKR">🇱🇰 LKR (Rupee)</option>
+                </select>
+            </div>
+            <div>
+                <label>To</label>
+                <select id="currTo" class="forminput" onchange="convertCurrency()">
+                    <option value="INR">🇮🇳 INR (Rupee)</option>
+                    <option value="USD" selected>🇺🇸 USD (Dollar)</option>
+                    <option value="EUR">🇪🇺 EUR (Euro)</option>
+                    <option value="GBP">🇬🇧 GBP (Pound)</option>
+                    <option value="JPY">🇯🇵 JPY (Yen)</option>
+                    <option value="AUD">🇦🇺 AUD (Dollar)</option>
+                    <option value="CAD">🇨🇦 CAD (Dollar)</option>
+                    <option value="THB">🇹🇭 THB (Baht)</option>
+                    <option value="SGD">🇸🇬 SGD (Dollar)</option>
+                    <option value="AED">🇦🇪 AED (Dirham)</option>
+                    <option value="MYR">🇲🇾 MYR (Ringgit)</option>
+                    <option value="LKR">🇱🇰 LKR (Rupee)</option>
+                </select>
+            </div>
+        </div>
+
+        <button class="btn" onclick="swapCurrency()" style="margin:10px 0;">🔄 Swap</button>
+
+        <div class="convert-result" id="convertResult">
+            <p class="convert-from" id="convertFrom">1,000 INR</p>
+            <p class="convert-arrow">⬇️</p>
+            <p class="convert-to" id="convertTo">= 11.90 USD</p>
+        </div>
+    </div>
+
+    <!-- Quick Reference -->
+    <div class="infobox">
+        <h3>📊 Quick Reference (vs INR)</h3>
+        <div id="currencyTable" class="currency-table"></div>
+    </div>
+</div>
+
+<!-- BUCKET LIST -->
+<div id="bucket" class="pg">
+    <div class="pghead">
+        <h2>🎯 Bucket List</h2>
+        <button class="btn primary" onclick="addBucketItem()">➕ Add Place</button>
+    </div>
+
+    <div id="bucketForm" class="infobox" style="display:none;">
+        <label>Place Name *</label>
+        <input type="text" id="bucketPlace" class="forminput" placeholder="e.g. Maldives">
+        <label>Why do you want to go?</label>
+        <input type="text" id="bucketReason" class="forminput" placeholder="e.g. Crystal clear water!">
+        <div class="btnrow">
+            <button class="btn primary" onclick="saveBucketItem()">💾 Save</button>
+            <button class="btn" onclick="closeBucketForm()">Cancel</button>
+        </div>
+    </div>
+
+    <div id="bucketList"></div>
+</div>
+
+<!-- FAB -->
+<button class="fab" onclick="navigate('newtrip')">➕</button>
+
+<footer>
+    <p>🌊 TravelLog — Built by Samuel Giftson S</p>
+</footer>
+
+<script src="script.js?v=1"></script>
+</body>
+</html>
