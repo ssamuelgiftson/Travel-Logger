@@ -1203,3 +1203,64 @@ footer { text-align: center; padding: 16px; color: var(--txt3); font-size: 0.72r
 @media (max-width: 480px) {
     .gridcards { grid-template-columns: repeat(2, 1fr); }
 }
+/* ============ COLLECTIONS ============ */
+.collection-item {
+    background: var(--bg);
+    border-radius: var(--rd2);
+    padding: 12px 14px;
+    margin-bottom: 8px;
+    border-left: 4px solid var(--sky1);
+    transition: 0.2s;
+}
+.collection-item:hover { transform: translateX(3px); }
+.collection-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+}
+.collection-header h4 { font-size: 0.88rem; }
+.collection-amount { font-weight: 800; font-size: 1rem; color: var(--sky1); }
+.collection-details { font-size: 0.75rem; color: var(--txt2); }
+.collection-del {
+    background: var(--coral); color: white; border: none;
+    border-radius: 50%; width: 20px; height: 20px;
+    cursor: pointer; font-size: 0.6rem; opacity: 0; transition: 0.2s; margin-left: 6px;
+}
+.collection-item:hover .collection-del { opacity: 1; }
+.recon-card {
+    background: var(--bg);
+    border-radius: var(--rd2);
+    padding: 14px;
+    margin-bottom: 10px;
+    border-left: 4px solid var(--sky1);
+}
+.recon-card.exact { border-left-color: #10b981; }
+.recon-card.short { border-left-color: #ef4444; }
+.recon-card.excess { border-left-color: #f59e0b; }
+.recon-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+}
+.recon-header h4 { font-size: 0.9rem; }
+.recon-status {
+    padding: 3px 10px; border-radius: 12px;
+    font-size: 0.7rem; font-weight: 700; color: white;
+}
+.recon-status.exact { background: #10b981; }
+.recon-status.short { background: #ef4444; }
+.recon-status.excess { background: #f59e0b; }
+.recon-row {
+    display: flex; justify-content: space-between;
+    font-size: 0.82rem; padding: 3px 0; color: var(--txt2);
+}
+.recon-row span:last-child { font-weight: 700; }
+.recon-diff {
+    margin-top: 6px; padding: 8px 12px; border-radius: 8px;
+    font-size: 0.85rem; font-weight: 700; text-align: center;
+}
+.recon-diff.exact { background: rgba(16,185,129,0.1); color: #10b981; }
+.recon-diff.short { background: rgba(239,68,68,0.1); color: #ef4444; }
+.recon-diff.excess { background: rgba(245,158,11,0.1); color: #d97706; }
