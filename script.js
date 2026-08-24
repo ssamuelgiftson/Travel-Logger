@@ -21,6 +21,7 @@ var currentGroupId = null;
 var currentUser = null;
 var myGroups = [];
 var chatListener = null;
+var editingExpenseId = null;
 
 // ============ NAVIGATION ============
 function navigate(pageId) {
@@ -488,15 +489,36 @@ function addItineraryDay() {
 }
 
 // ============ EXPENSES ============
-function openExpenseForm() {
+function openExpenseForm(expenseId) {
+    editingExpenseId = expenseId || null;
     document.getElementById('expenseForm').style.display = 'block';
     document.getElementById('expDate').value = new Date().toISOString().slice(0, 10);
     populateExpensePaidBy();
     populateExpenseSplit();
+    var trip = allTrips.find(function(t) { return t.id === currentTripId; });
+    var expense = trip && trip.expenses ? trip.expenses.find(function(item) { return item.id === editingExpenseId; }) : null;
+    if (expense) {
+        document.getElementById('expenseFormTitle').textContent = '✏️ Modify Expense';
+        document.getElementById('expenseSaveBtn').textContent = '💾 Update';
+        document.getElementById('expDesc').value = expense.desc || '';
+        document.getElementById('expDate').value = expense.date || new Date().toISOString().slice(0, 10);
+        document.getElementById('expCategory').value = expense.category || '📦 Other';
+        document.getElementById('expSubCategory').value = expense.subCategory || '';
+        document.getElementById('expAmount').value = expense.amount || '';
+        document.getElementById('expPaidBy').value = expense.paidBy || 'me';
+        var assigned = expense.splitWith || [];
+        document.querySelectorAll('#expSplitMembers input[type="checkbox"]').forEach(function(input) {
+            input.checked = assigned.some(function(member) { return member.uid === input.getAttribute('data-uid'); });
+        });
+    } else {
+        document.getElementById('expenseFormTitle').textContent = '➕ Add Expense';
+        document.getElementById('expenseSaveBtn').textContent = '💾 Save';
+    }
 }
 
 function closeExpenseForm() {
     document.getElementById('expenseForm').style.display = 'none';
+    editingExpenseId = null;
 }
 
 function populateExpensePaidBy() {
@@ -589,23 +611,33 @@ function addExpense() {
         splitWith: splitWith,
         date: date
     };
-    trip.expenses.push(expense);
+    var existingExpense = editingExpenseId ? trip.expenses.find(function(item) { return item.id === editingExpenseId; }) : null;
+    if (existingExpense) {
+        for (var key in expense) { existingExpense[key] = expense[key]; }
+    } else {
+        trip.expenses.push(expense);
+    }
 
     saveTripsLocal();
     closeExpenseForm();
     document.getElementById('expDesc').value = '';
     document.getElementById('expAmount').value = '';
 
-    // If group trip, save expense to Firestore
-    if (trip.groupId && currentUser) {
+    // New group expenses are copied to Firestore. Local edits remain available offline.
+    if (trip.groupId && currentUser && !existingExpense) {
         var expData = trip.expenses[trip.expenses.length - 1];
         expData.tripName = trip.name;
         expData.paidByUid = paidBy === 'me' ? currentUser.uid : paidBy;
         db.collection('groups').doc(trip.groupId).collection('expenses').add(expData);
+    } else if (trip.groupId && currentUser && existingExpense && typeof db !== 'undefined') {
+        db.collection('groups').doc(trip.groupId).collection('expenses')
+            .where('id', '==', existingExpense.id).limit(1).get().then(function(snapshot) {
+                if (!snapshot.empty) { snapshot.docs[0].ref.update(existingExpense); }
+            });
     }
 
     viewTrip(currentTripId);
-    toast('Expense added! 💰', 'ok');
+    toast(existingExpense ? 'Expense updated! 💰' : 'Expense added! 💰', 'ok');
 }
 
 function openAllExpenseForm() {
@@ -713,6 +745,12 @@ function deleteExpense(tripId, expId) {
     viewTrip(tripId);
 }
 
+function editExpense(tripId, expId) {
+    currentTripId = tripId;
+    viewTrip(tripId);
+    openExpenseForm(expId);
+}
+
 function renderTripExpenses(trip) {
     var categories = {};
     for (var i = 0; i < trip.expenses.length; i++) {
@@ -745,6 +783,7 @@ function renderTripExpenses(trip) {
             if (e.paidByName && e.paidByName !== 'Me') { listHtml += ' · Paid by ' + e.paidByName; }
             listHtml += '</p></div></div>';
             listHtml += '<span class="expense-item-amount">₹' + e.amount.toLocaleString() + '</span>';
+            listHtml += '<button class="expense-item-edit" onclick="editExpense(\'' + trip.id + '\',\'' + e.id + '\')">✎</button>';
             listHtml += '<button class="expense-item-del" onclick="deleteExpense(\'' + trip.id + '\',\'' + e.id + '\')">✕</button>';
             listHtml += '</div>';
         }
@@ -825,7 +864,7 @@ function renderAllExpenses() {
         for (var j = 0; j < trip.expenses.length; j++) {
             var exp = trip.expenses[j];
             totalSpent += exp.amount;
-            allExp.push({ trip: trip.name, expense: exp });
+            allExp.push({ tripId: trip.id, trip: trip.name, expense: exp });
             if (!catTotals[exp.category]) { catTotals[exp.category] = 0; }
             catTotals[exp.category] += exp.amount;
         }
@@ -852,7 +891,8 @@ function renderAllExpenses() {
         var catIcon = item.expense.category.split(' ')[0];
         listHtml += '<div class="expense-item"><div class="expense-item-left"><span class="expense-item-cat">' + catIcon + '</span>';
         listHtml += '<div class="expense-item-info"><h4>' + item.expense.desc + '</h4><p>' + item.trip + (item.expense.subCategory ? ' · ' + item.expense.subCategory : '') + ' · ' + item.expense.date + '</p></div></div>';
-        listHtml += '<span class="expense-item-amount">₹' + item.expense.amount.toLocaleString() + '</span></div>';
+        listHtml += '<span class="expense-item-amount">₹' + item.expense.amount.toLocaleString() + '</span>';
+        listHtml += '<button class="expense-item-edit" onclick="editExpense(\'' + item.tripId + '\',\'' + item.expense.id + '\')">✎</button></div>';
     }
     document.getElementById('allExpensesList').innerHTML = listHtml || '<p class="placeholder">No expenses!</p>';
 }

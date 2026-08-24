@@ -159,6 +159,7 @@
     <div class="infobox">
         <div class="pghead" style="margin-bottom:10px;"><h3>💰 Expenses</h3><button class="btn small" onclick="openExpenseForm()">➕ Add</button></div>
         <div id="expenseForm" class="expense-form" style="display:none;">
+            <h3 id="expenseFormTitle">➕ Add Expense</h3>
             <div class="tworow">
                 <div><label>What *</label><input type="text" id="expDesc" class="forminput" placeholder="e.g. Lunch"></div>
                 <div><label>Date *</label><input type="date" id="expDate" class="forminput"></div>
@@ -184,7 +185,7 @@
             </div>
             <label>Traveler (To be Paid) *</label>
             <div id="expSplitMembers" class="split-members"></div>
-            <div class="btnrow"><button class="btn primary" onclick="addExpense()">💾 Save</button><button class="btn" onclick="closeExpenseForm()">Cancel</button></div>
+            <div class="btnrow"><button class="btn primary" id="expenseSaveBtn" onclick="addExpense()">💾 Save</button><button class="btn" onclick="closeExpenseForm()">Cancel</button></div>
         </div>
         <div id="tvExpenseSummary" class="expense-summary"></div>
         <div id="tvExpenseList"></div>

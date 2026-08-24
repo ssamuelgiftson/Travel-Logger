@@ -698,6 +698,21 @@ body {
     margin-left: 8px;
 }
 
+.expense-item-edit {
+    background: var(--sky1);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 22px; height: 22px;
+    cursor: pointer;
+    font-size: 0.7rem;
+    opacity: 0;
+    transition: 0.2s;
+    margin-left: 8px;
+}
+
+.expense-item:hover .expense-item-edit { opacity: 1; }
+
 .expense-item:hover .expense-item-del { opacity: 1; }
 
 /* ============ SPLIT EXPENSES ============ */
