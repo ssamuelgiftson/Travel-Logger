@@ -1611,3 +1611,122 @@ window.onload = function() {
 
     toast('TravelLog ready! 🌊', 'ok');
 };
+// ============ COLLECTION TRACKING ============
+var allCollections = JSON.parse(localStorage.getItem('travelCollections') || '[]');
+
+function showCollectionForm() {
+    document.getElementById('collectionForm').style.display = 'block';
+    document.getElementById('colDate').value = new Date().toISOString().slice(0, 10);
+    var sel = document.getElementById('colTrip');
+    sel.innerHTML = '<option value="">-- Select Trip --</option>';
+    for (var i = 0; i < allTrips.length; i++) {
+        sel.innerHTML += '<option value="' + allTrips[i].id + '">' + allTrips[i].name + '</option>';
+    }
+}
+
+function hideCollectionForm() {
+    document.getElementById('collectionForm').style.display = 'none';
+}
+
+function saveCollection() {
+    var from = document.getElementById('colFrom').value.trim();
+    var amount = parseFloat(document.getElementById('colAmount').value);
+    var purpose = document.getElementById('colPurpose').value.trim();
+    var date = document.getElementById('colDate').value;
+    var tripId = document.getElementById('colTrip').value;
+    var category = document.getElementById('colCategory').value;
+    var note = document.getElementById('colNote').value.trim();
+    if (!from || !amount || !purpose) { toast('Fill required fields!', 'err'); return; }
+    var tripName = '';
+    if (tripId) {
+        var trip = allTrips.find(function(t) { return t.id === tripId; });
+        if (trip) { tripName = trip.name; }
+    }
+    allCollections.push({
+        id: 'col_' + Date.now(),
+        from: from, amount: amount, purpose: purpose,
+        date: date || new Date().toISOString().slice(0, 10),
+        tripId: tripId, tripName: tripName,
+        category: category, note: note
+    });
+    localStorage.setItem('travelCollections', JSON.stringify(allCollections));
+    hideCollectionForm();
+    document.getElementById('colFrom').value = '';
+    document.getElementById('colAmount').value = '';
+    document.getElementById('colPurpose').value = '';
+    document.getElementById('colNote').value = '';
+    renderCollections();
+    toast('Collection recorded! 💵', 'ok');
+}
+
+function deleteCollection(colId) {
+    allCollections = allCollections.filter(function(c) { return c.id !== colId; });
+    localStorage.setItem('travelCollections', JSON.stringify(allCollections));
+    renderCollections();
+    toast('Collection deleted.', 'ok');
+}
+
+function renderCollections() {
+    var html = '';
+    for (var i = allCollections.length - 1; i >= 0; i--) {
+        var c = allCollections[i];
+        html += '<div class="collection-item">';
+        html += '<div class="collection-item-info">';
+        html += '<h4>💵 ' + c.from + ' → ' + c.purpose + '</h4>';
+        html += '<p>' + (c.tripName || 'No trip') + ' · ' + c.date + (c.category ? ' · ' + c.category : '') + (c.note ? ' · ' + c.note : '') + '</p>';
+        html += '</div>';
+        html += '<span class="collection-amount">₹' + c.amount.toLocaleString() + '</span>';
+        html += '<button class="collection-item-del" onclick="deleteCollection(\'' + c.id + '\')">✕</button>';
+        html += '</div>';
+    }
+    document.getElementById('collectionsList').innerHTML = html || '<p class="placeholder">No collections recorded yet.</p>';
+    renderReconciliation();
+}
+
+function renderReconciliation() {
+    var personTotals = {};
+    for (var i = 0; i < allTrips.length; i++) {
+        var expenses = allTrips[i].expenses || [];
+        for (var j = 0; j < expenses.length; j++) {
+            var exp = expenses[j];
+            if (exp.splitWith && exp.splitWith.length) {
+                var share = exp.amount / exp.splitWith.length;
+                for (var k = 0; k < exp.splitWith.length; k++) {
+                    var name = exp.splitWith[k].name;
+                    if (!personTotals[name]) { personTotals[name] = { expenses: 0, collected: 0 }; }
+                    personTotals[name].expenses += share;
+                }
+            }
+        }
+    }
+    for (var c = 0; c < allCollections.length; c++) {
+        var col = allCollections[c];
+        if (!personTotals[col.from]) { personTotals[col.from] = { expenses: 0, collected: 0 }; }
+        personTotals[col.from].collected += col.amount;
+    }
+    var html = '<h4 style="color:var(--sky1);margin-bottom:8px;">📊 Reconciliation Summary</h4>';
+    var hasData = false;
+    for (var name in personTotals) {
+        hasData = true;
+        var p = personTotals[name];
+        var pending = p.expenses - p.collected;
+        var cls = pending <= 0 ? 'settled' : 'pending';
+        html += '<div class="reconciliation-card ' + cls + '">';
+        html += '<div><strong>' + name + '</strong><br><small style="color:var(--txt2);">Owes: ₹' + Math.round(p.expenses).toLocaleString() + ' · Paid: ₹' + Math.round(p.collected).toLocaleString() + '</small></div>';
+        if (pending <= 0) {
+            html += '<span class="settle-amount green">✅ Settled</span>';
+        } else {
+            html += '<span class="settle-amount red">₹' + Math.round(pending).toLocaleString() + ' pending</span>';
+        }
+        html += '</div>';
+    }
+    if (!hasData) { html += '<p class="placeholder">No data yet.</p>'; }
+    document.getElementById('reconciliationSummary').innerHTML = html;
+}
+
+// Auto-render collections when All Expenses page loads
+var origRenderAllExpenses = renderAllExpenses;
+renderAllExpenses = function() {
+    origRenderAllExpenses();
+    renderCollections();
+};
