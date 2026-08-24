@@ -309,6 +309,44 @@
         <div id="allExpTravelers" class="split-members"></div>
         <div class="btnrow"><button class="btn primary" onclick="addExpenseFromAll()">💾 Save</button><button class="btn" onclick="closeAllExpenseForm()">Cancel</button></div>
     </div>
+        <!-- COLLECTION TRACKING -->
+    <div class="infobox">
+        <div class="pghead" style="margin-bottom:10px;">
+            <h3>💵 Collections & Reconciliation</h3>
+            <button class="btn small" onclick="showCollectionForm()">➕ Record Collection</button>
+        </div>
+        <div id="collectionForm" class="expense-form" style="display:none;">
+            <h4 style="margin-bottom:8px;color:var(--sky1);">💵 Record Money Collected</h4>
+            <div class="tworow">
+                <div><label>Collected From *</label><input type="text" id="colFrom" class="forminput" placeholder="e.g. Ravi"></div>
+                <div><label>Amount *</label><input type="number" id="colAmount" class="forminput" placeholder="e.g. 1000"></div>
+            </div>
+            <div class="tworow">
+                <div><label>For What *</label><input type="text" id="colPurpose" class="forminput" placeholder="e.g. Train Tickets"></div>
+                <div><label>Date</label><input type="date" id="colDate" class="forminput"></div>
+            </div>
+            <label>Link to Trip</label>
+            <select id="colTrip" class="forminput"><option value="">-- Select Trip --</option></select>
+            <label>Category</label>
+            <select id="colCategory" class="forminput">
+                <option value="">-- Any --</option>
+                <option value="🍔 Food">🍔 Food</option>
+                <option value="🏨 Hotel">🏨 Hotel</option>
+                <option value="🚗 Transport">🚗 Transport</option>
+                <option value="🎟️ Tickets">🎟️ Tickets</option>
+                <option value="🛍️ Shopping">🛍️ Shopping</option>
+                <option value="📦 Other">📦 Other</option>
+            </select>
+            <label>Notes</label>
+            <input type="text" id="colNote" class="forminput" placeholder="Any details...">
+            <div class="btnrow">
+                <button class="btn primary" onclick="saveCollection()">💾 Save</button>
+                <button class="btn" onclick="hideCollectionForm()">Cancel</button>
+            </div>
+        </div>
+        <div id="collectionsList"></div>
+        <div id="reconciliationSummary" style="margin-top:14px;"></div>
+    </div>
     <div class="statrow">
         <div class="statcard"><span class="bignum" id="totalSpentAll">₹0</span><span>Total Spent</span></div>
         <div class="statcard"><span class="bignum" id="totalIOwe">₹0</span><span>I Owe</span></div>
