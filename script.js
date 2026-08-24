@@ -1,5 +1,5 @@
 // =============================================
-//  TRAVELLOG — Groups, Chat & Expense Split
+//  TRAVELLOG — Cloud Sync + All Features
 //  Built by Samuel Giftson S
 // =============================================
 
@@ -16,12 +16,12 @@ function toast(msg, type) {
 // ============ STATE ============
 var allTrips = JSON.parse(localStorage.getItem('tlTrips') || '[]');
 var bucketList = JSON.parse(localStorage.getItem('tlBucket') || '[]');
+var advancePayments = JSON.parse(localStorage.getItem('tlAdvances') || '[]');
 var currentTripId = null;
 var currentGroupId = null;
 var currentUser = null;
 var myGroups = [];
 var chatListener = null;
-var editingExpenseId = null;
 
 // ============ NAVIGATION ============
 function navigate(pageId) {
@@ -32,12 +32,9 @@ function navigate(pageId) {
     document.getElementById(pageId).classList.add('show');
     window.scrollTo(0, 0);
 
-    if (pageId === 'home') {
-        updateDashboard();
-        renderRecentTrips();
-    }
+    if (pageId === 'home') { updateDashboard(); renderRecentTrips(); }
     if (pageId === 'trips') { renderTrips(); }
-    if (pageId === 'expenses') { renderAllExpenses(); }
+    if (pageId === 'expenses') { renderAllExpenses(); populateGlobalExpenseForm(); }
     if (pageId === 'map') { setTimeout(initMap, 300); }
     if (pageId === 'currency') { convertCurrency(); renderCurrencyTable(); }
     if (pageId === 'bucket') { renderBucket(); }
@@ -52,15 +49,10 @@ function applyTimeTheme() {
     body.classList.remove('theme-morning', 'theme-afternoon', 'theme-evening', 'theme-night');
     if (body.classList.contains('dark-theme')) { return; }
 
-    if (hour >= 5 && hour < 12) {
-        body.classList.add('theme-morning');
-    } else if (hour >= 12 && hour < 17) {
-        body.classList.add('theme-afternoon');
-    } else if (hour >= 17 && hour < 21) {
-        body.classList.add('theme-evening');
-    } else {
-        body.classList.add('theme-night');
-    }
+    if (hour >= 5 && hour < 12) { body.classList.add('theme-morning'); }
+    else if (hour >= 12 && hour < 17) { body.classList.add('theme-afternoon'); }
+    else if (hour >= 17 && hour < 21) { body.classList.add('theme-evening'); }
+    else { body.classList.add('theme-night'); }
 }
 
 function switchTheme() {
@@ -105,13 +97,12 @@ function onUserLoggedIn(user) {
     currentUser = user;
     document.getElementById('loginPopup').classList.add('hidden');
 
-    // Show user in navbar
     var userArea = document.getElementById('userArea');
     if (userArea) { userArea.style.display = 'flex'; }
     var pic = document.getElementById('userPic');
     if (pic && user.photoURL) { pic.src = user.photoURL; }
-    var name = document.getElementById('userName');
-    if (name) { name.textContent = user.displayName ? user.displayName.split(' ')[0] : 'User'; }
+    var nameEl = document.getElementById('userName');
+    if (nameEl) { nameEl.textContent = user.displayName ? user.displayName.split(' ')[0] : 'User'; }
 
     // Save user to Firestore
     db.collection('users').doc(user.uid).set({
@@ -123,6 +114,7 @@ function onUserLoggedIn(user) {
 
     updateGreeting();
     loadMyGroups();
+    loadCloudData(user.uid);
 }
 
 function updateGreeting() {
@@ -156,6 +148,70 @@ function updateGreeting() {
     if (msgEl) { msgEl.textContent = m; }
 }
 
+// ============ CLOUD SYNC ============
+function saveTripsLocal() {
+    localStorage.setItem('tlTrips', JSON.stringify(allTrips));
+    saveToCloud();
+}
+
+function saveToCloud() {
+    if (!currentUser || typeof db === 'undefined') { return; }
+    db.collection('users').doc(currentUser.uid).set({
+        trips: JSON.stringify(allTrips),
+        bucketList: JSON.stringify(bucketList),
+        advances: JSON.stringify(advancePayments),
+        updatedAt: new Date().toISOString()
+    }, { merge: true }).catch(function(err) {
+        console.log('Cloud save error:', err);
+    });
+}
+
+function loadCloudData(userId) {
+    db.collection('users').doc(userId).get().then(function(doc) {
+        if (!doc.exists) { return; }
+        var data = doc.data();
+
+        // Load trips
+        if (data.trips) {
+            try {
+                var cloudTrips = JSON.parse(data.trips);
+                if (cloudTrips.length > allTrips.length) {
+                    allTrips = cloudTrips;
+                    localStorage.setItem('tlTrips', JSON.stringify(allTrips));
+                    toast('📥 Trips restored from cloud!', 'ok');
+                }
+            } catch (e) { console.log('Parse error:', e); }
+        }
+
+        // Load bucket list
+        if (data.bucketList) {
+            try {
+                var cloudBucket = JSON.parse(data.bucketList);
+                if (cloudBucket.length > bucketList.length) {
+                    bucketList = cloudBucket;
+                    localStorage.setItem('tlBucket', JSON.stringify(bucketList));
+                }
+            } catch (e) {}
+        }
+
+        // Load advances
+        if (data.advances) {
+            try {
+                var cloudAdv = JSON.parse(data.advances);
+                if (cloudAdv.length > advancePayments.length) {
+                    advancePayments = cloudAdv;
+                    localStorage.setItem('tlAdvances', JSON.stringify(advancePayments));
+                }
+            } catch (e) {}
+        }
+
+        updateDashboard();
+        renderRecentTrips();
+    }).catch(function(err) {
+        console.log('Cloud load error:', err);
+    });
+}
+
 // ============ DASHBOARD ============
 function updateDashboard() {
     var totalSpent = 0;
@@ -185,7 +241,7 @@ function updateDashboard() {
 function renderRecentTrips() {
     var container = document.getElementById('recentTrips');
     if (allTrips.length === 0) {
-        container.innerHTML = '<p class="placeholder">No trips yet! Plan your first adventure! ✈️</p>';
+        container.innerHTML = '<p class="placeholder">No trips yet! ✈️</p>';
         return;
     }
     var recent = allTrips.slice(-3).reverse();
@@ -196,13 +252,34 @@ function renderRecentTrips() {
         html += '<div class="trip-card" style="margin-bottom:10px;cursor:pointer;" onclick="viewTrip(\'' + t.id + '\')">';
         html += '<div class="trip-card-top" style="background:linear-gradient(135deg,' + getTripColor(t.type) + ')">';
         html += '<h3>' + t.name + '</h3>';
-        html += '<p>📍 ' + t.destination + ' · ' + t.type + '</p>';
-        html += '</div>';
-        html += '<div class="trip-card-bot">';
-        html += '<div class="trip-card-meta"><span>📅 ' + t.startDate + '</span><span>💰 ₹' + spent.toLocaleString() + '</span></div>';
-        html += '</div></div>';
+        html += '<p>📍 ' + t.destination + ' · ' + t.type + '</p></div>';
+        html += '<div class="trip-card-bot"><div class="trip-card-meta"><span>📅 ' + t.startDate + '</span><span>💰 ₹' + spent.toLocaleString() + '</span></div></div></div>';
     }
     container.innerHTML = html;
+}
+
+// ============ TRAVELER MODE ============
+function setTravelerMode(mode) {
+    var options = document.querySelectorAll('.traveler-option');
+    for (var i = 0; i < options.length; i++) { options[i].classList.remove('selected'); }
+
+    var groupFields = document.getElementById('groupFields');
+    var soloHint = document.getElementById('soloHint');
+
+    if (mode === 'solo') {
+        if (options[0]) { options[0].classList.add('selected'); }
+        if (groupFields) { groupFields.classList.add('hidden-field'); }
+        if (soloHint) { soloHint.style.display = 'block'; }
+    } else {
+        if (options[1]) { options[1].classList.add('selected'); }
+        if (groupFields) { groupFields.classList.remove('hidden-field'); }
+        if (soloHint) { soloHint.style.display = 'none'; }
+    }
+
+    var radios = document.querySelectorAll('input[name="travelerMode"]');
+    for (var j = 0; j < radios.length; j++) {
+        radios[j].checked = radios[j].value === mode;
+    }
 }
 
 // ============ TRIPS ============
@@ -213,13 +290,20 @@ function saveTrip() {
     var end = document.getElementById('tripEnd').value;
     var type = document.getElementById('tripType').value;
     var notes = document.getElementById('tripNotes').value.trim();
-    var groupId = document.getElementById('tripGroup').value;
-    var travelerMode = document.querySelector('input[name="travelerMode"]:checked').value;
+
+    // Get traveler mode
+    var modeRadio = document.querySelector('input[name="travelerMode"]:checked');
+    var travelMode = modeRadio ? modeRadio.value : 'solo';
+    var groupId = null;
+
+    if (travelMode === 'group') {
+        var groupSel = document.getElementById('tripGroup');
+        if (groupSel) { groupId = groupSel.value || null; }
+    }
 
     if (!name) { toast('Enter trip name!', 'warn'); return; }
     if (!dest) { toast('Enter destination!', 'warn'); return; }
     if (!start || !end) { toast('Pick dates!', 'warn'); return; }
-    if (travelerMode === 'group' && !groupId) { toast('Select a travel group!', 'warn'); return; }
 
     var startDate = new Date(start);
     var endDate = new Date(end);
@@ -236,8 +320,8 @@ function saveTrip() {
         days: days,
         type: type,
         notes: notes,
-        travelerMode: travelerMode,
-        groupId: groupId || null,
+        travelMode: travelMode,
+        groupId: groupId,
         expenses: [],
         itinerary: [],
         createdAt: new Date().toLocaleDateString()
@@ -266,8 +350,17 @@ function saveTrip() {
     navigate('trips');
 }
 
-function saveTripsLocal() {
-    localStorage.setItem('tlTrips', JSON.stringify(allTrips));
+function populateGroupSelect() {
+    var sel = document.getElementById('tripGroup');
+    if (!sel) { return; }
+    sel.innerHTML = '<option value="">No group — personal trip</option>';
+    for (var i = 0; i < myGroups.length; i++) {
+        var g = myGroups[i];
+        var opt = document.createElement('option');
+        opt.value = g.id;
+        opt.textContent = '👥 ' + g.name;
+        sel.appendChild(opt);
+    }
 }
 
 function getTripStatus(trip) {
@@ -314,10 +407,7 @@ function renderTrips(filter) {
         container.innerHTML = '<p class="placeholder">No trips yet! ✈️</p>';
         return;
     }
-    var list = allTrips;
-    if (filter && filter !== 'all') {
-        list = allTrips.filter(function(t) { return getTripStatus(t) === filter; });
-    }
+    var list = filter && filter !== 'all' ? allTrips.filter(function(t) { return getTripStatus(t) === filter; }) : allTrips;
     if (list.length === 0) {
         container.innerHTML = '<p class="placeholder">No ' + filter + ' trips!</p>';
         return;
@@ -359,40 +449,6 @@ function deleteTrip(id) {
     toast('Deleted!', 'info');
 }
 
-function populateGroupSelect() {
-    var sel = document.getElementById('tripGroup');
-    if (!sel) { return; }
-    sel.innerHTML = '<option value="">No group — personal trip</option>';
-    for (var i = 0; i < myGroups.length; i++) {
-        var g = myGroups[i];
-        var opt = document.createElement('option');
-        opt.value = g.id;
-        opt.textContent = '👥 ' + g.name;
-        sel.appendChild(opt);
-    }
-    toggleTravelerMode();
-}
-
-function toggleTravelerMode() {
-    var modeInput = document.querySelector('input[name="travelerMode"]:checked');
-    var mode = modeInput ? modeInput.value : 'individual';
-    var groupSelect = document.getElementById('tripGroup');
-    var groupLabel = document.getElementById('tripGroupLabel');
-    var hint = document.getElementById('travelerModeHint');
-    var individualOption = document.getElementById('individualOption');
-    var groupOption = document.getElementById('groupOption');
-    if (!groupSelect || !groupLabel || !hint) { return; }
-
-    groupSelect.classList.toggle('hidden-field', mode !== 'group');
-    groupLabel.classList.toggle('hidden-field', mode !== 'group');
-    hint.textContent = mode === 'group'
-        ? 'Choose a group to share expenses and settle up together.'
-        : 'You are the only traveler. Expenses stay personal.';
-    if (individualOption) { individualOption.classList.toggle('selected', mode === 'individual'); }
-    if (groupOption) { groupOption.classList.toggle('selected', mode === 'group'); }
-    if (mode !== 'group') { groupSelect.value = ''; }
-}
-
 // ============ TRIP VIEW ============
 function viewTrip(tripId) {
     var trip = allTrips.find(function(t) { return t.id === tripId; });
@@ -406,8 +462,9 @@ function viewTrip(tripId) {
     var status = getTripStatus(trip);
 
     var h = '<h2>' + trip.name + '</h2>';
-    h += '<p style="color:var(--txt2);margin-bottom:12px;">📍 ' + trip.destination + ' · ' + getTripStatusLabel(status) + '</p>';
-    h += '<p class="traveler-badge">' + (trip.travelerMode === 'group' || trip.groupId ? '👥 Group trip' : '🧍 Personal trip') + '</p>';
+    h += '<p style="color:var(--txt2);margin-bottom:12px;">📍 ' + trip.destination + ' · ' + getTripStatusLabel(status);
+    if (trip.travelMode === 'group') { h += ' · 👥 Group trip'; }
+    h += '</p>';
     h += '<div class="trip-detail-stats">';
     h += '<div class="td-stat"><span>📅 ' + trip.days + '</span><span>Days</span></div>';
     h += '<div class="td-stat"><span>₹' + spent.toLocaleString() + '</span><span>Spent</span></div>';
@@ -488,43 +545,19 @@ function addItineraryDay() {
     toast('Day ' + next + ' added!', 'ok');
 }
 
-// ============ EXPENSES ============
-function openExpenseForm(expenseId) {
-    editingExpenseId = expenseId || null;
+// ============ TRIP EXPENSES ============
+function openExpenseForm() {
     document.getElementById('expenseForm').style.display = 'block';
-    document.getElementById('expDate').value = new Date().toISOString().slice(0, 10);
-    document.getElementById('expPayer').value = 'Father';
     populateExpensePaidBy();
-    populateExpenseSplit();
-    var trip = allTrips.find(function(t) { return t.id === currentTripId; });
-    var expense = trip && trip.expenses ? trip.expenses.find(function(item) { return item.id === editingExpenseId; }) : null;
-    if (expense) {
-        document.getElementById('expenseFormTitle').textContent = '✏️ Modify Expense';
-        document.getElementById('expenseSaveBtn').textContent = '💾 Update';
-        document.getElementById('expDesc').value = expense.desc || '';
-        document.getElementById('expDate').value = expense.date || new Date().toISOString().slice(0, 10);
-        document.getElementById('expCategory').value = expense.category || '📦 Other';
-        document.getElementById('expSubCategory').value = expense.subCategory || '';
-        document.getElementById('expAmount').value = expense.amount || '';
-        document.getElementById('expPayer').value = expense.payerName || 'Father';
-        document.getElementById('expPaidBy').value = expense.paidBy || 'me';
-        var assigned = expense.splitWith || [];
-        document.querySelectorAll('#expSplitMembers input[type="checkbox"]').forEach(function(input) {
-            input.checked = assigned.some(function(member) { return member.uid === input.getAttribute('data-uid'); });
-        });
-    } else {
-        document.getElementById('expenseFormTitle').textContent = '➕ Add Expense';
-        document.getElementById('expenseSaveBtn').textContent = '💾 Save';
-    }
 }
 
 function closeExpenseForm() {
     document.getElementById('expenseForm').style.display = 'none';
-    editingExpenseId = null;
 }
 
 function populateExpensePaidBy() {
     var sel = document.getElementById('expPaidBy');
+    if (!sel) { return; }
     sel.innerHTML = '<option value="me">Me</option>';
 
     var trip = allTrips.find(function(t) { return t.id === currentTripId; });
@@ -544,314 +577,75 @@ function populateExpensePaidBy() {
     }
 }
 
-function populateExpenseSplit() {
-    var container = document.getElementById('expSplitMembers');
-    container.innerHTML = '';
-
-    var trip = allTrips.find(function(t) { return t.id === currentTripId; });
-    if (!trip || !trip.groupId) {
-        var personalName = currentUser && currentUser.displayName ? currentUser.displayName : 'Me';
-        var personalUid = currentUser ? currentUser.uid : 'me';
-        container.innerHTML = '<label class="split-member"><input type="checkbox" checked data-uid="' + personalUid + '" data-name="' + personalName + '"><span>' + personalName + '</span></label>';
-        return;
-    }
-
-    var group = myGroups.find(function(g) { return g.id === trip.groupId; });
-    if (!group || !group.members) { return; }
-
-    for (var i = 0; i < group.members.length; i++) {
-        var m = group.members[i];
-        var html = '<label class="split-member">';
-        html += '<input type="checkbox" checked data-uid="' + m.uid + '" data-name="' + m.name + '">';
-        if (m.photo) { html += '<img src="' + m.photo + '" alt="">'; }
-        html += '<span>' + m.name.split(' ')[0] + '</span></label>';
-        container.innerHTML += html;
-    }
-}
-
 function addExpense() {
     var desc = document.getElementById('expDesc').value.trim();
-    var date = document.getElementById('expDate').value;
     var amount = parseFloat(document.getElementById('expAmount').value);
     var category = document.getElementById('expCategory').value;
-    var subCategory = document.getElementById('expSubCategory').value.trim();
-    var payerName = document.getElementById('expPayer').value.trim();
-    var paidBy = document.getElementById('expPaidBy').value;
+    var subCategory = '';
+    var expDate = '';
+    var paidBy = 'me';
+    var accountPayer = 'Me';
+    var travelerToPay = '';
+
+    var subCatEl = document.getElementById('expSubCategory');
+    if (subCatEl) { subCategory = subCatEl.value.trim(); }
+
+    var dateEl = document.getElementById('expDate');
+    if (dateEl) { expDate = dateEl.value; }
+
+    var paidByEl = document.getElementById('expPaidBy');
+    if (paidByEl) { paidBy = paidByEl.value; }
+
+    var accPayerEl = document.getElementById('expAccountPayer');
+    if (accPayerEl) { accountPayer = accPayerEl.value; }
+
+    var travelerEl = document.getElementById('expTraveler');
+    if (travelerEl) { travelerToPay = travelerEl.value.trim(); }
 
     if (!desc) { toast('Enter description!', 'warn'); return; }
-    if (!date) { toast('Select a date!', 'warn'); return; }
-    if (!payerName) { toast('Enter who paid!', 'warn'); return; }
     if (!amount || amount <= 0) { toast('Enter valid amount!', 'warn'); return; }
 
     var trip = allTrips.find(function(t) { return t.id === currentTripId; });
-    if (!trip) { toast('Open a trip before adding an expense.', 'warn'); return; }
-    if (!trip.expenses) { trip.expenses = []; }
-
-    // Get split members
-    var splitWith = [];
-    var checkboxes = document.querySelectorAll('#expSplitMembers input[type="checkbox"]:checked');
-    for (var i = 0; i < checkboxes.length; i++) {
-        splitWith.push({
-            uid: checkboxes[i].getAttribute('data-uid'),
-            name: checkboxes[i].getAttribute('data-name')
-        });
-    }
-    if (splitWith.length === 0) { toast('Select at least one traveler!', 'warn'); return; }
+    if (!trip) { toast('Trip not found!', 'err'); return; }
 
     var paidByName = 'Me';
-    if (paidBy !== 'me' && currentUser) {
-        var selOpt = document.getElementById('expPaidBy');
-        paidByName = selOpt.options[selOpt.selectedIndex].textContent;
+    if (paidBy !== 'me' && paidByEl) {
+        paidByName = paidByEl.options[paidByEl.selectedIndex].textContent;
     }
 
-    var expense = {
+    trip.expenses.push({
         id: 'exp_' + Date.now(),
         desc: desc,
         amount: amount,
         category: category,
         subCategory: subCategory,
-        payerName: payerName,
         paidBy: paidBy,
         paidByName: paidByName,
-        splitWith: splitWith,
-        date: date
-    };
-    var existingExpense = editingExpenseId ? trip.expenses.find(function(item) { return item.id === editingExpenseId; }) : null;
-    if (existingExpense) {
-        for (var key in expense) { existingExpense[key] = expense[key]; }
-    } else {
-        trip.expenses.push(expense);
-    }
+        accountPayer: accountPayer,
+        travelerToPay: travelerToPay,
+        date: expDate || new Date().toLocaleDateString()
+    });
 
     saveTripsLocal();
     closeExpenseForm();
+
+    // Clear form
     document.getElementById('expDesc').value = '';
     document.getElementById('expAmount').value = '';
-    document.getElementById('expPayer').value = 'Father';
+    if (subCatEl) { subCatEl.value = ''; }
+    if (travelerEl) { travelerEl.value = ''; }
 
-    // New group expenses are copied to Firestore. Local edits remain available offline.
-    if (trip.groupId && currentUser && !existingExpense) {
+    // Sync to Firebase group if group trip
+    if (trip.groupId && currentUser) {
         var expData = trip.expenses[trip.expenses.length - 1];
         expData.tripName = trip.name;
-        expData.paidByUid = paidBy === 'me' ? currentUser.uid : paidBy;
-        db.collection('groups').doc(trip.groupId).collection('expenses').add(expData);
-    } else if (trip.groupId && currentUser && existingExpense && typeof db !== 'undefined') {
-        db.collection('groups').doc(trip.groupId).collection('expenses')
-            .where('id', '==', existingExpense.id).limit(1).get().then(function(snapshot) {
-                if (!snapshot.empty) { snapshot.docs[0].ref.update(existingExpense); }
-            });
+        db.collection('groups').doc(trip.groupId).collection('expenses').add(expData).catch(function(err) {
+            console.log('Group expense sync error:', err);
+        });
     }
 
     viewTrip(currentTripId);
-    toast(existingExpense ? 'Expense updated! 💰' : 'Expense added! 💰', 'ok');
-}
-
-function openAllExpenseForm() {
-    var form = document.getElementById('allExpenseForm');
-    var select = document.getElementById('allExpTrip');
-    if (!form || !select) { return; }
-    if (allTrips.length === 0) {
-        toast('Create a trip before adding an expense.', 'warn');
-        navigate('newtrip');
-        return;
-    }
-
-    select.innerHTML = '';
-    for (var i = 0; i < allTrips.length; i++) {
-        var option = document.createElement('option');
-        option.value = allTrips[i].id;
-        option.textContent = allTrips[i].name + ' — ' + allTrips[i].destination;
-        select.appendChild(option);
-    }
-    if (currentTripId && allTrips.some(function(t) { return t.id === currentTripId; })) {
-        select.value = currentTripId;
-    }
-    document.getElementById('allExpDate').value = new Date().toISOString().slice(0, 10);
-    populateAllExpenseTravelers();
-    form.style.display = 'block';
-}
-
-function populateAllExpenseTravelers() {
-    var container = document.getElementById('allExpTravelers');
-    var select = document.getElementById('allExpTrip');
-    if (!container || !select) { return; }
-    var trip = allTrips.find(function(item) { return item.id === select.value; });
-    var members = [];
-    if (trip && trip.groupId) {
-        var group = myGroups.find(function(item) { return item.id === trip.groupId; });
-        members = group && group.members ? group.members : [];
-    }
-    if (members.length === 0) {
-        var name = currentUser && currentUser.displayName ? currentUser.displayName : 'Me';
-        members = [{ uid: currentUser ? currentUser.uid : 'me', name: name }];
-    }
-    container.innerHTML = members.map(function(member) {
-        return '<label class="split-member"><input type="checkbox" checked data-uid="' + member.uid + '" data-name="' + member.name + '"><span>' + member.name + '</span></label>';
-    }).join('');
-}
-
-function closeAllExpenseForm() {
-    var form = document.getElementById('allExpenseForm');
-    if (form) { form.style.display = 'none'; }
-}
-
-function addExpenseFromAll() {
-    var tripId = document.getElementById('allExpTrip').value;
-    var desc = document.getElementById('allExpDesc').value.trim();
-    var date = document.getElementById('allExpDate').value;
-    var amount = parseFloat(document.getElementById('allExpAmount').value);
-    var category = document.getElementById('allExpCategory').value;
-    var subCategory = document.getElementById('allExpSubCategory').value.trim();
-    var payerName = document.getElementById('allExpPayer').value.trim();
-    var trip = allTrips.find(function(t) { return t.id === tripId; });
-
-    if (!trip) { toast('Select a trip!', 'warn'); return; }
-    if (!desc) { toast('Enter description!', 'warn'); return; }
-    if (!date) { toast('Select a date!', 'warn'); return; }
-    if (!payerName) { toast('Enter who paid!', 'warn'); return; }
-    if (!amount || amount <= 0) { toast('Enter valid amount!', 'warn'); return; }
-    if (!trip.expenses) { trip.expenses = []; }
-
-    var splitWith = [];
-    var checkboxes = document.querySelectorAll('#allExpTravelers input[type="checkbox"]:checked');
-    for (var i = 0; i < checkboxes.length; i++) {
-        splitWith.push({ uid: checkboxes[i].getAttribute('data-uid'), name: checkboxes[i].getAttribute('data-name') });
-    }
-    if (splitWith.length === 0) { toast('Select at least one traveler!', 'warn'); return; }
-
-    var expense = {
-        id: 'exp_' + Date.now(),
-        desc: desc,
-        amount: amount,
-        category: category,
-        subCategory: subCategory,
-        payerName: payerName,
-        paidBy: 'me',
-        paidByName: 'Me',
-        splitWith: splitWith,
-        date: date
-    };
-    trip.expenses.push(expense);
-    currentTripId = tripId;
-    saveTripsLocal();
-    if (trip.groupId && currentUser && typeof db !== 'undefined') {
-        expense.tripName = trip.name;
-        expense.paidByUid = currentUser.uid;
-        db.collection('groups').doc(trip.groupId).collection('expenses').add(expense);
-    }
-    document.getElementById('allExpDesc').value = '';
-    document.getElementById('allExpAmount').value = '';
-    document.getElementById('allExpPayer').value = 'Father';
-    closeAllExpenseForm();
-    renderAllExpenses();
     toast('Expense added! 💰', 'ok');
-}
-
-function renderDailyReport() {
-    var container = document.getElementById('dailyReport');
-    var dateInput = document.getElementById('reportDate');
-    if (!container || !dateInput) { return; }
-    var reportDate = dateInput.value;
-    var totals = {};
-    for (var i = 0; i < allTrips.length; i++) {
-        var expenses = allTrips[i].expenses || [];
-        for (var j = 0; j < expenses.length; j++) {
-            var expense = expenses[j];
-            if (expense.date !== reportDate) { continue; }
-            var travelers = expense.splitWith && expense.splitWith.length ? expense.splitWith : [{ uid: 'unknown', name: 'Unassigned' }];
-            var share = expense.amount / travelers.length;
-            for (var k = 0; k < travelers.length; k++) {
-                var traveler = travelers[k];
-                if (!totals[traveler.uid]) { totals[traveler.uid] = { name: traveler.name, amount: 0, collected: true }; }
-                totals[traveler.uid].amount += share;
-                if (!expense.collected) { totals[traveler.uid].collected = false; }
-            }
-        }
-    }
-    for (var tripIndex = 0; tripIndex < allTrips.length; tripIndex++) {
-        var advances = allTrips[tripIndex].advances || [];
-        for (var advanceIndex = 0; advanceIndex < advances.length; advanceIndex++) {
-            var advance = advances[advanceIndex];
-            if (advance.date > reportDate) { continue; }
-            if (!totals[advance.travelerUid]) { totals[advance.travelerUid] = { name: advance.travelerName, amount: 0, advance: 0, collected: false }; }
-            totals[advance.travelerUid].advance += advance.amount;
-        }
-    }
-    var names = Object.keys(totals);
-    if (names.length === 0) { container.innerHTML = '<p class="placeholder">No expenses recorded for this date.</p>'; return; }
-    var total = 0;
-    var html = '<div class="daily-report-total">Total to collect: <strong>₹0</strong></div>';
-    for (var n = 0; n < names.length; n++) {
-        var row = totals[names[n]];
-        var balance = Math.max(0, row.amount - (row.advance || 0));
-        var credit = Math.max(0, (row.advance || 0) - row.amount);
-        total += balance;
-        html += '<div class="report-row"><div><strong>' + row.name + '</strong><small>Expenses: ₹' + Math.round(row.amount).toLocaleString() + ' · Advance: ₹' + Math.round(row.advance || 0).toLocaleString() + (credit ? ' · Credit: ₹' + Math.round(credit).toLocaleString() : '') + '</small></div><strong>₹' + Math.round(balance).toLocaleString() + '</strong></div>';
-    }
-    html = html.replace('₹0</strong>', '₹' + Math.round(total).toLocaleString() + '</strong>');
-    html += '<button class="btn primary" onclick="markDailyCollected()">✅ Mark this day collected</button>';
-    container.innerHTML = html;
-}
-
-function openAdvanceForm() {
-    var form = document.getElementById('advanceForm');
-    if (!form || allTrips.length === 0) { toast('Create a trip before recording an advance.', 'warn'); return; }
-    var select = document.getElementById('advanceTrip');
-    select.innerHTML = allTrips.map(function(trip) {
-        return '<option value="' + trip.id + '">' + trip.name + ' — ' + trip.destination + '</option>';
-    }).join('');
-    document.getElementById('advanceDate').value = document.getElementById('reportDate').value || new Date().toISOString().slice(0, 10);
-    populateAdvanceTravelers();
-    form.style.display = 'block';
-}
-
-function populateAdvanceTravelers() {
-    var select = document.getElementById('advanceTrip');
-    var container = document.getElementById('advanceTravelers');
-    if (!select || !container) { return; }
-    var trip = allTrips.find(function(item) { return item.id === select.value; });
-    var group = trip && trip.groupId ? myGroups.find(function(item) { return item.id === trip.groupId; }) : null;
-    var members = group && group.members ? group.members : [{ uid: currentUser ? currentUser.uid : 'me', name: currentUser && currentUser.displayName ? currentUser.displayName : 'Me' }];
-    container.innerHTML = members.map(function(member, index) {
-        return '<label class="split-member"><input type="radio" name="advanceTraveler" value="' + member.uid + '" data-name="' + member.name + '" ' + (index === 0 ? 'checked' : '') + '><span>' + member.name + '</span></label>';
-    }).join('');
-}
-
-function closeAdvanceForm() {
-    var form = document.getElementById('advanceForm');
-    if (form) { form.style.display = 'none'; }
-}
-
-function saveAdvancePayment() {
-    var tripId = document.getElementById('advanceTrip').value;
-    var date = document.getElementById('advanceDate').value;
-    var amount = parseFloat(document.getElementById('advanceAmount').value);
-    var selected = document.querySelector('input[name="advanceTraveler"]:checked');
-    var note = document.getElementById('advanceNote').value.trim();
-    var trip = allTrips.find(function(item) { return item.id === tripId; });
-    if (!trip || !selected) { toast('Select a traveler!', 'warn'); return; }
-    if (!date) { toast('Select a date!', 'warn'); return; }
-    if (!amount || amount <= 0) { toast('Enter a valid advance amount!', 'warn'); return; }
-    if (!trip.advances) { trip.advances = []; }
-    trip.advances.push({ id: 'advance_' + Date.now(), date: date, amount: amount, travelerUid: selected.value, travelerName: selected.getAttribute('data-name'), note: note });
-    saveTripsLocal();
-    document.getElementById('advanceAmount').value = '';
-    document.getElementById('advanceNote').value = '';
-    closeAdvanceForm();
-    renderAllExpenses();
-    toast('Advance payment recorded and deducted from the report.', 'ok');
-}
-
-function markDailyCollected() {
-    var reportDate = document.getElementById('reportDate').value;
-    var changed = false;
-    for (var i = 0; i < allTrips.length; i++) {
-        var expenses = allTrips[i].expenses || [];
-        for (var j = 0; j < expenses.length; j++) {
-            if (expenses[j].date === reportDate) { expenses[j].collected = true; changed = true; }
-        }
-    }
-    if (changed) { saveTripsLocal(); renderAllExpenses(); toast('Daily cash marked as collected.', 'ok'); }
 }
 
 function deleteExpense(tripId, expId) {
@@ -860,12 +654,6 @@ function deleteExpense(tripId, expId) {
     trip.expenses = trip.expenses.filter(function(e) { return e.id !== expId; });
     saveTripsLocal();
     viewTrip(tripId);
-}
-
-function editExpense(tripId, expId) {
-    currentTripId = tripId;
-    viewTrip(tripId);
-    openExpenseForm(expId);
 }
 
 function renderTripExpenses(trip) {
@@ -893,51 +681,40 @@ function renderTripExpenses(trip) {
             listHtml += '<div class="expense-item-left">';
             listHtml += '<span class="expense-item-cat">' + icon + '</span>';
             listHtml += '<div class="expense-item-info"><h4>' + e.desc + '</h4>';
-            listHtml += '<p>' + e.category + (e.subCategory ? ' · ' + e.subCategory : '') + ' · ' + e.date;
-            if (e.splitWith && e.splitWith.length) {
-                listHtml += ' · For ' + e.splitWith.map(function(member) { return member.name; }).join(', ');
-            }
-            if (e.payerName || (e.paidByName && e.paidByName !== 'Me')) { listHtml += ' · Paid by ' + (e.payerName || e.paidByName); }
+            listHtml += '<p>' + e.category;
+            if (e.subCategory) { listHtml += ' → ' + e.subCategory; }
+            listHtml += ' · ' + e.date;
+            if (e.paidByName && e.paidByName !== 'Me') { listHtml += ' · Paid by ' + e.paidByName; }
+            if (e.travelerToPay) { listHtml += ' · For: ' + e.travelerToPay; }
             listHtml += '</p></div></div>';
             listHtml += '<span class="expense-item-amount">₹' + e.amount.toLocaleString() + '</span>';
-            listHtml += '<button class="expense-item-edit" onclick="editExpense(\'' + trip.id + '\',\'' + e.id + '\')">✎</button>';
             listHtml += '<button class="expense-item-del" onclick="deleteExpense(\'' + trip.id + '\',\'' + e.id + '\')">✕</button>';
             listHtml += '</div>';
         }
     }
     document.getElementById('tvExpenseList').innerHTML = listHtml;
 
-    // Render settle up section
     renderSettleUp(trip);
 }
 
 function renderSettleUp(trip) {
     var container = document.getElementById('settleSection');
-    if (!trip.groupId || !trip.expenses.length) {
+    if (!container) { return; }
+    if (!trip.groupId || !trip.expenses || !trip.expenses.length) {
         container.innerHTML = '';
         return;
     }
 
-    // Calculate who owes whom
     var balances = {};
     for (var i = 0; i < trip.expenses.length; i++) {
         var exp = trip.expenses[i];
-        if (!exp.splitWith || exp.splitWith.length === 0) { continue; }
-
-        var perPerson = exp.amount / exp.splitWith.length;
-        var payerUid = exp.paidBy === 'me' ? 'me' : exp.paidBy;
-
-        for (var j = 0; j < exp.splitWith.length; j++) {
-            var member = exp.splitWith[j];
-            if (member.uid === payerUid) { continue; }
-
-            var key = member.name;
+        if (exp.travelerToPay && exp.paidByName) {
+            var key = exp.travelerToPay;
             if (!balances[key]) { balances[key] = 0; }
-
-            if (payerUid === 'me') {
-                balances[key] += perPerson; // They owe me
+            if (exp.paidBy === 'me') {
+                balances[key] += exp.amount;
             } else {
-                balances[key] -= perPerson; // I owe them
+                balances[key] -= exp.amount;
             }
         }
     }
@@ -949,29 +726,197 @@ function renderSettleUp(trip) {
         var amount = Math.round(balances[name]);
         if (amount === 0) { continue; }
         hasBalances = true;
-
         if (amount > 0) {
-            html += '<div class="settle-card owed-to-you">';
-            html += '<div class="settle-info"><h4>' + name + '</h4><p>owes you</p></div>';
-            html += '<span class="settle-amount green">₹' + amount.toLocaleString() + '</span>';
-            html += '</div>';
+            html += '<div class="settle-card owed-to-you"><div class="settle-info"><h4>' + name + '</h4><p>owes you</p></div><span class="settle-amount green">₹' + amount.toLocaleString() + '</span></div>';
         } else {
-            html += '<div class="settle-card you-owe">';
-            html += '<div class="settle-info"><h4>' + name + '</h4><p>you owe</p></div>';
-            html += '<span class="settle-amount red">₹' + Math.abs(amount).toLocaleString() + '</span>';
-            html += '</div>';
+            html += '<div class="settle-card you-owe"><div class="settle-info"><h4>' + name + '</h4><p>you owe</p></div><span class="settle-amount red">₹' + Math.abs(amount).toLocaleString() + '</span></div>';
         }
     }
 
-    if (!hasBalances) { html += '<p class="placeholder">All settled up! ✅</p>'; }
+    if (!hasBalances) { html += '<p class="placeholder">All settled! ✅</p>'; }
     container.innerHTML = html;
+}
+
+// ============ GLOBAL EXPENSES ============
+function populateGlobalExpenseForm() {
+    var tripSel = document.getElementById('globalExpTrip');
+    if (!tripSel) { return; }
+    tripSel.innerHTML = '<option value="">-- Select Trip --</option>';
+    for (var i = 0; i < allTrips.length; i++) {
+        var opt = document.createElement('option');
+        opt.value = allTrips[i].id;
+        opt.textContent = allTrips[i].name;
+        tripSel.appendChild(opt);
+    }
+
+    // Also populate advance trip selector
+    var advTripSel = document.getElementById('advTrip');
+    if (advTripSel) {
+        advTripSel.innerHTML = '<option value="">-- Select Trip --</option>';
+        for (var j = 0; j < allTrips.length; j++) {
+            var opt2 = document.createElement('option');
+            opt2.value = allTrips[j].id;
+            opt2.textContent = allTrips[j].name;
+            advTripSel.appendChild(opt2);
+        }
+    }
+}
+
+function showGlobalExpenseForm() {
+    var form = document.getElementById('globalExpenseForm');
+    if (form) { form.style.display = 'block'; }
+    populateGlobalExpenseForm();
+}
+
+function hideGlobalExpenseForm() {
+    var form = document.getElementById('globalExpenseForm');
+    if (form) { form.style.display = 'none'; }
+}
+
+function addGlobalExpense() {
+    var tripId = document.getElementById('globalExpTrip').value;
+    if (!tripId) { toast('Select a trip!', 'warn'); return; }
+
+    var desc = document.getElementById('globalExpDesc').value.trim();
+    var amount = parseFloat(document.getElementById('globalExpAmount').value);
+    var category = document.getElementById('globalExpCategory').value;
+    var date = document.getElementById('globalExpDate').value;
+    var subCategory = '';
+    var paidBy = '';
+    var traveler = '';
+
+    var subCatEl = document.getElementById('globalExpSubCategory');
+    if (subCatEl) { subCategory = subCatEl.value.trim(); }
+
+    var paidByEl = document.getElementById('globalExpPaidBy');
+    if (paidByEl) { paidBy = paidByEl.value.trim(); }
+
+    var travelerEl = document.getElementById('globalExpTraveler');
+    if (travelerEl) { traveler = travelerEl.value.trim(); }
+
+    if (!desc) { toast('Enter description!', 'warn'); return; }
+    if (!amount || amount <= 0) { toast('Enter valid amount!', 'warn'); return; }
+
+    var trip = allTrips.find(function(t) { return t.id === tripId; });
+    if (!trip) { toast('Trip not found!', 'err'); return; }
+
+    trip.expenses.push({
+        id: 'exp_' + Date.now(),
+        desc: desc,
+        amount: amount,
+        category: category,
+        subCategory: subCategory,
+        paidBy: paidBy || 'me',
+        paidByName: paidBy || 'Me',
+        travelerToPay: traveler,
+        date: date || new Date().toLocaleDateString()
+    });
+
+    saveTripsLocal();
+    hideGlobalExpenseForm();
+
+    // Clear form
+    document.getElementById('globalExpDesc').value = '';
+    document.getElementById('globalExpAmount').value = '';
+    if (subCatEl) { subCatEl.value = ''; }
+    if (travelerEl) { travelerEl.value = ''; }
+
+    renderAllExpenses();
+    toast('Expense added! 💰', 'ok');
+}
+
+// ============ ADVANCE PAYMENTS ============
+function showAdvanceForm() {
+    var form = document.getElementById('advanceForm');
+    if (form) { form.style.display = 'block'; }
+    populateGlobalExpenseForm();
+}
+
+function hideAdvanceForm() {
+    var form = document.getElementById('advanceForm');
+    if (form) { form.style.display = 'none'; }
+}
+
+function saveAdvance() {
+    var tripId = document.getElementById('advTrip').value;
+    var date = document.getElementById('advDate').value;
+    var amount = parseFloat(document.getElementById('advAmount').value);
+    var traveler = document.getElementById('advTraveler').value.trim();
+    var note = document.getElementById('advNote').value.trim();
+
+    if (!tripId) { toast('Select a trip!', 'warn'); return; }
+    if (!amount || amount <= 0) { toast('Enter valid amount!', 'warn'); return; }
+    if (!traveler) { toast('Enter traveler name!', 'warn'); return; }
+
+    advancePayments.push({
+        id: 'adv_' + Date.now(),
+        tripId: tripId,
+        date: date || new Date().toLocaleDateString(),
+        amount: amount,
+        traveler: traveler,
+        note: note
+    });
+
+    localStorage.setItem('tlAdvances', JSON.stringify(advancePayments));
+    saveToCloud();
+    hideAdvanceForm();
+
+    document.getElementById('advAmount').value = '';
+    document.getElementById('advTraveler').value = '';
+    document.getElementById('advNote').value = '';
+
+    renderAllExpenses();
+    toast('Advance recorded! 💵', 'ok');
+}
+
+// ============ DAILY CASH REPORT ============
+function showDailyCashReport() {
+    var today = new Date().toLocaleDateString();
+    var todayExpenses = [];
+    var totalToday = 0;
+
+    for (var i = 0; i < allTrips.length; i++) {
+        if (!allTrips[i].expenses) { continue; }
+        for (var j = 0; j < allTrips[i].expenses.length; j++) {
+            var exp = allTrips[i].expenses[j];
+            if (exp.date === today) {
+                todayExpenses.push({ trip: allTrips[i].name, expense: exp });
+                totalToday += exp.amount;
+            }
+        }
+    }
+
+    var html = '<div class="infobox"><h3>🧾 Daily Cash Report — ' + today + '</h3>';
+    html += '<p style="font-size:1.2rem;font-weight:800;color:var(--coral);margin-bottom:12px;">Total Today: ₹' + totalToday.toLocaleString() + '</p>';
+
+    if (todayExpenses.length === 0) {
+        html += '<p class="placeholder">No expenses today!</p>';
+    } else {
+        for (var k = 0; k < todayExpenses.length; k++) {
+            var item = todayExpenses[k];
+            var icon = item.expense.category.split(' ')[0];
+            html += '<div class="expense-item">';
+            html += '<div class="expense-item-left"><span class="expense-item-cat">' + icon + '</span>';
+            html += '<div class="expense-item-info"><h4>' + item.expense.desc + '</h4>';
+            html += '<p>' + item.trip + ' · ' + item.expense.category + '</p></div></div>';
+            html += '<span class="expense-item-amount">₹' + item.expense.amount.toLocaleString() + '</span></div>';
+        }
+    }
+    html += '</div>';
+
+    // Show in a simple alert-like way or insert into page
+    var existingReport = document.getElementById('dailyReport');
+    if (existingReport) {
+        existingReport.innerHTML = html;
+        existingReport.style.display = 'block';
+    } else {
+        toast('Today: ₹' + totalToday.toLocaleString() + ' across ' + todayExpenses.length + ' expenses', 'info');
+    }
 }
 
 // ============ ALL EXPENSES ============
 function renderAllExpenses() {
     var totalSpent = 0;
-    var totalOwe = 0;
-    var totalOwed = 0;
     var allExp = [];
     var catTotals = {};
 
@@ -981,15 +926,17 @@ function renderAllExpenses() {
         for (var j = 0; j < trip.expenses.length; j++) {
             var exp = trip.expenses[j];
             totalSpent += exp.amount;
-            allExp.push({ tripId: trip.id, trip: trip.name, expense: exp });
+            allExp.push({ trip: trip.name, expense: exp });
             if (!catTotals[exp.category]) { catTotals[exp.category] = 0; }
             catTotals[exp.category] += exp.amount;
         }
     }
 
     document.getElementById('totalSpentAll').textContent = '₹' + totalSpent.toLocaleString();
-    document.getElementById('totalIOwe').textContent = '₹' + totalOwe.toLocaleString();
-    document.getElementById('totalOwedToMe').textContent = '₹' + totalOwed.toLocaleString();
+    var ioweEl = document.getElementById('totalIOwe');
+    var owedEl = document.getElementById('totalOwedToMe');
+    if (ioweEl) { ioweEl.textContent = '₹0'; }
+    if (owedEl) { owedEl.textContent = '₹0'; }
 
     var maxCat = 0;
     for (var c in catTotals) { if (catTotals[c] > maxCat) { maxCat = catTotals[c]; } }
@@ -1007,14 +954,13 @@ function renderAllExpenses() {
         var item = allExp[k];
         var catIcon = item.expense.category.split(' ')[0];
         listHtml += '<div class="expense-item"><div class="expense-item-left"><span class="expense-item-cat">' + catIcon + '</span>';
-        listHtml += '<div class="expense-item-info"><h4>' + item.expense.desc + '</h4><p>' + item.trip + (item.expense.subCategory ? ' · ' + item.expense.subCategory : '') + ' · ' + item.expense.date + (item.expense.payerName ? ' · Paid by ' + item.expense.payerName : '') + '</p></div></div>';
-        listHtml += '<span class="expense-item-amount">₹' + item.expense.amount.toLocaleString() + '</span>';
-        listHtml += '<button class="expense-item-edit" onclick="editExpense(\'' + item.tripId + '\',\'' + item.expense.id + '\')">✎</button></div>';
+        listHtml += '<div class="expense-item-info"><h4>' + item.expense.desc + '</h4>';
+        listHtml += '<p>' + item.trip + ' · ' + item.expense.date;
+        if (item.expense.travelerToPay) { listHtml += ' · For: ' + item.expense.travelerToPay; }
+        listHtml += '</p></div></div>';
+        listHtml += '<span class="expense-item-amount">₹' + item.expense.amount.toLocaleString() + '</span></div>';
     }
     document.getElementById('allExpensesList').innerHTML = listHtml || '<p class="placeholder">No expenses!</p>';
-    var reportDate = document.getElementById('reportDate');
-    if (reportDate && !reportDate.value) { reportDate.value = new Date().toISOString().slice(0, 10); }
-    renderDailyReport();
 }
 
 // ============ GROUPS ============
@@ -1044,7 +990,7 @@ function createGroup() {
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
     };
 
-    db.collection('groups').add(groupData).then(function(docRef) {
+    db.collection('groups').add(groupData).then(function() {
         document.getElementById('groupName').value = '';
         document.getElementById('createGroupBox').style.display = 'none';
         toast('Group "' + name + '" created! Code: ' + groupCode, 'ok');
@@ -1056,58 +1002,82 @@ function createGroup() {
 
 function joinGroup() {
     var code = document.getElementById('joinCode').value.trim().toUpperCase();
-    if (!code) { toast('Enter group code!', 'warn'); return; }
+    if (!code) { toast('Enter code!', 'warn'); return; }
     if (!currentUser) { toast('Sign in first!', 'warn'); return; }
 
     db.collection('groups').where('code', '==', code).get().then(function(snapshot) {
-        if (snapshot.empty) {
-            toast('Invalid code! No group found.', 'err');
-            return;
-        }
-
+        if (snapshot.empty) { toast('Invalid code!', 'err'); return; }
         var doc = snapshot.docs[0];
         var group = doc.data();
 
-        // Check if already member
-        var alreadyMember = false;
-        if (group.members) {
-            for (var i = 0; i < group.members.length; i++) {
-                if (group.members[i].uid === currentUser.uid) {
-                    alreadyMember = true;
-                    break;
-                }
+        for (var i = 0; i < group.members.length; i++) {
+            if (group.members[i].uid === currentUser.uid) {
+                toast('Already in this group!', 'warn');
+                return;
             }
         }
 
-        if (alreadyMember) {
-            toast('You are already in this group!', 'warn');
-            return;
-        }
-
-        // Add member
-        var newMember = {
-            uid: currentUser.uid,
-            name: currentUser.displayName || 'User',
-            email: currentUser.email || '',
-            photo: currentUser.photoURL || '',
-            role: 'member'
-        };
-
         db.collection('groups').doc(doc.id).update({
-            members: firebase.firestore.FieldValue.arrayUnion(newMember)
+            members: firebase.firestore.FieldValue.arrayUnion({
+                uid: currentUser.uid,
+                name: currentUser.displayName || 'User',
+                email: currentUser.email || '',
+                photo: currentUser.photoURL || '',
+                role: 'member'
+            })
         }).then(function() {
             document.getElementById('joinCode').value = '';
             toast('Joined "' + group.name + '"! 🎉', 'ok');
             loadMyGroups();
         });
-    }).catch(function(err) {
-        toast('Error: ' + err.message, 'err');
-    });
+    }).catch(function(err) { toast('Error: ' + err.message, 'err'); });
+}
+
+function addManualMember() {
+    var nameInput = document.getElementById('manualMemberName');
+    if (!nameInput) { return; }
+    var name = nameInput.value.trim();
+    if (!name) { toast('Enter member name!', 'warn'); return; }
+    if (!currentGroupId) { return; }
+
+    var manualMember = {
+        uid: 'manual_' + Date.now(),
+        name: name,
+        email: '',
+        photo: '',
+        role: 'member'
+    };
+
+    db.collection('groups').doc(currentGroupId).update({
+        members: firebase.firestore.FieldValue.arrayUnion(manualMember)
+    }).then(function() {
+        nameInput.value = '';
+        toast(name + ' added! 👥', 'ok');
+        loadMyGroups();
+        setTimeout(function() { viewGroup(currentGroupId); }, 500);
+    }).catch(function(err) { toast('Error: ' + err.message, 'err'); });
+}
+
+function leaveGroup() {
+    if (!currentGroupId || !currentUser) { return; }
+    if (!confirm('Leave this group?')) { return; }
+
+    var group = myGroups.find(function(g) { return g.id === currentGroupId; });
+    if (!group) { return; }
+
+    var updatedMembers = group.members.filter(function(m) { return m.uid !== currentUser.uid; });
+
+    db.collection('groups').doc(currentGroupId).update({
+        members: updatedMembers
+    }).then(function() {
+        toast('Left the group!', 'info');
+        navigate('groups');
+        loadMyGroups();
+    }).catch(function(err) { toast('Error: ' + err.message, 'err'); });
 }
 
 function loadMyGroups() {
     if (!currentUser) { return; }
-
     db.collection('groups').get().then(function(snapshot) {
         myGroups = [];
         snapshot.forEach(function(doc) {
@@ -1130,157 +1100,63 @@ function loadMyGroups() {
 function renderGroups() {
     var container = document.getElementById('groupsList');
     if (myGroups.length === 0) {
-        container.innerHTML = '<p class="placeholder">No groups yet! Create or join one! 👥</p>';
+        container.innerHTML = '<p class="placeholder">No groups! 👥</p>';
         return;
     }
-
     var html = '';
     for (var i = 0; i < myGroups.length; i++) {
         var g = myGroups[i];
-        var memberCount = g.members ? g.members.length : 0;
-
+        var mc = g.members ? g.members.length : 0;
         html += '<div class="group-card" onclick="viewGroup(\'' + g.id + '\')">';
         html += '<div class="group-card-top"><h3>👥 ' + g.name + '</h3>';
-        html += '<p>Code: ' + g.code + ' · Created by ' + g.createdByName + '</p></div>';
+        html += '<p>Code: ' + g.code + '</p></div>';
         html += '<div class="group-card-bot">';
         html += '<div class="group-members-avatars">';
-        var showMax = Math.min(memberCount, 4);
-        for (var j = 0; j < showMax; j++) {
-            if (g.members[j].photo) {
-                html += '<img src="' + g.members[j].photo + '" alt="">';
-            }
+        for (var j = 0; j < Math.min(mc, 4); j++) {
+            if (g.members[j].photo) { html += '<img src="' + g.members[j].photo + '" alt="">'; }
         }
         html += '</div>';
-        html += '<span class="group-member-count">' + memberCount + ' member' + (memberCount !== 1 ? 's' : '') + '</span>';
+        html += '<span class="group-member-count">' + mc + ' member' + (mc !== 1 ? 's' : '') + '</span>';
         html += '</div></div>';
     }
     container.innerHTML = html;
 }
 
-// ============ GROUP VIEW ============
 function viewGroup(groupId) {
     var group = myGroups.find(function(g) { return g.id === groupId; });
-    if (!group) { toast('Group not found!', 'err'); return; }
-
+    if (!group) { toast('Not found!', 'err'); return; }
     currentGroupId = groupId;
     navigate('groupview');
 
     document.getElementById('gvTitle').textContent = '👥 ' + group.name;
+    document.getElementById('gvInfo').innerHTML = '<h3>📋 Info</h3><p>Created by: <b>' + group.createdByName + '</b></p><p>Members: <b>' + group.members.length + '</b></p>';
+    document.getElementById('gvCode').innerHTML = '<h3>🔗 Invite</h3><p class="small">Share code:</p><div class="group-code-box"><span class="group-code">' + group.code + '</span><button class="copy-btn" onclick="copyCode(\'' + group.code + '\')">📋 Copy</button></div>';
 
-    // Info
-    document.getElementById('gvInfo').innerHTML = '<h3>📋 Group Info</h3><p>Created by: <b>' + group.createdByName + '</b></p><p>Members: <b>' + group.members.length + '</b></p>';
-
-    // Code
-    document.getElementById('gvCode').innerHTML = '<h3>🔗 Invite Friends</h3><p class="small">Share this code with friends to join:</p><div class="group-code-box"><span class="group-code">' + group.code + '</span><button class="copy-btn" onclick="copyCode(\'' + group.code + '\')">📋 Copy</button></div>';
-
-    // Members
     var membersHtml = '';
     for (var i = 0; i < group.members.length; i++) {
         var m = group.members[i];
         membersHtml += '<div class="member-item">';
         if (m.photo) { membersHtml += '<img src="' + m.photo + '" alt="">'; }
-        membersHtml += '<div class="member-item-info"><h4>' + m.name + '</h4><p>' + (m.email || '') + '</p></div>';
+        membersHtml += '<div class="member-item-info"><h4>' + m.name + '</h4><p>' + (m.email || 'Manual member') + '</p></div>';
         if (m.role === 'admin') { membersHtml += '<span class="member-badge">Admin</span>'; }
         membersHtml += '</div>';
     }
     document.getElementById('gvMembers').innerHTML = membersHtml;
-    var isAdmin = currentUser && group.members.some(function(member) {
-        return member.uid === currentUser.uid && member.role === 'admin';
-    });
-    document.getElementById('addMemberBox').style.display = isAdmin ? 'block' : 'none';
 
-    // Load chat
     loadGroupChat(groupId);
-
-    // Load group expenses
     loadGroupExpenses(groupId);
-}
-
-function addManualMember() {
-    var nameInput = document.getElementById('manualMemberName');
-    var emailInput = document.getElementById('manualMemberEmail');
-    var name = nameInput.value.trim();
-    var email = emailInput.value.trim();
-    var group = myGroups.find(function(g) { return g.id === currentGroupId; });
-    if (!currentUser || !group) { toast('Group not found!', 'err'); return; }
-    var isAdmin = group.members.some(function(member) {
-        return member.uid === currentUser.uid && member.role === 'admin';
-    });
-    if (!isAdmin) { toast('Only the group admin can add members.', 'warn'); return; }
-    if (!name) { toast('Enter the member name!', 'warn'); return; }
-    if (group.members.some(function(member) {
-        return member.name.toLowerCase() === name.toLowerCase() || (email && member.email === email);
-    })) {
-        toast('That member is already in the group!', 'warn');
-        return;
-    }
-
-    var newMember = {
-        uid: 'manual_' + Date.now(),
-        name: name,
-        email: email,
-        photo: '',
-        role: 'member'
-    };
-    db.collection('groups').doc(currentGroupId).update({
-        members: firebase.firestore.FieldValue.arrayUnion(newMember)
-    }).then(function() {
-        nameInput.value = '';
-        emailInput.value = '';
-        toast(name + ' added to the group!', 'ok');
-        loadMyGroups();
-        setTimeout(function() { viewGroup(currentGroupId); }, 300);
-    }).catch(function(err) {
-        toast('Could not add member: ' + err.message, 'err');
-    });
-}
-
-function leaveGroup() {
-    var group = myGroups.find(function(g) { return g.id === currentGroupId; });
-    if (!currentUser || !group) { toast('Group not found!', 'err'); return; }
-    var member = group.members.find(function(item) { return item.uid === currentUser.uid; });
-    if (!member) { toast('You are not a member of this group.', 'warn'); return; }
-    var adminCount = group.members.filter(function(item) { return item.role === 'admin'; }).length;
-    if (member.role === 'admin' && adminCount === 1) {
-        toast('Add another admin before leaving this group.', 'warn');
-        return;
-    }
-    if (!confirm('Leave "' + group.name + '"?')) { return; }
-
-    db.collection('groups').doc(currentGroupId).update({
-        members: firebase.firestore.FieldValue.arrayRemove(member)
-    }).then(function() {
-        for (var i = 0; i < allTrips.length; i++) {
-            if (allTrips[i].groupId === currentGroupId) {
-                allTrips[i].groupId = null;
-                allTrips[i].travelerMode = 'individual';
-            }
-        }
-        saveTripsLocal();
-        if (chatListener) { chatListener(); chatListener = null; }
-        currentGroupId = null;
-        toast('You left the group.', 'info');
-        navigate('groups');
-        loadMyGroups();
-    }).catch(function(err) {
-        toast('Could not leave group: ' + err.message, 'err');
-    });
 }
 
 function copyCode(code) {
     navigator.clipboard.writeText(code).then(function() {
-        toast('Code copied! 📋', 'ok');
-    }).catch(function() {
-        toast('Code: ' + code, 'info');
-    });
+        toast('Copied! 📋', 'ok');
+    }).catch(function() { toast('Code: ' + code, 'info'); });
 }
 
 // ============ GROUP CHAT ============
 function loadGroupChat(groupId) {
     var chatArea = document.getElementById('groupChat');
     chatArea.innerHTML = '';
-
-    // Unsubscribe previous listener
     if (chatListener) { chatListener(); }
 
     chatListener = db.collection('groups').doc(groupId).collection('messages')
@@ -1288,10 +1164,7 @@ function loadGroupChat(groupId) {
         .limitToLast(50)
         .onSnapshot(function(snapshot) {
             chatArea.innerHTML = '';
-            snapshot.forEach(function(doc) {
-                var msg = doc.data();
-                renderChatMessage(msg);
-            });
+            snapshot.forEach(function(doc) { renderChatMessage(doc.data()); });
             chatArea.scrollTop = chatArea.scrollHeight;
         });
 }
@@ -1303,22 +1176,17 @@ function renderChatMessage(msg) {
     div.className = 'chatmsg ' + (isMe ? 'me' : '');
 
     var avatarHtml = '<div class="chatavatar">';
-    if (msg.photo) { avatarHtml += '<img src="' + msg.photo + '" alt="">'; }
+    if (msg.photo) { avatarHtml += '<img src="' + msg.photo + '">'; }
     else { avatarHtml += '👤'; }
     avatarHtml += '</div>';
 
     var bubbleHtml = '<div class="chatbubble">';
     if (!isMe) { bubbleHtml += '<div class="chat-name">' + (msg.name || 'User') + '</div>'; }
     bubbleHtml += '<div>' + msg.text + '</div>';
-
-    // Money request
     if (msg.moneyAmount) {
-        bubbleHtml += '<div class="money-request">';
-        bubbleHtml += '<div class="mr-amount">₹' + msg.moneyAmount.toLocaleString() + '</div>';
-        bubbleHtml += '<div class="mr-desc">' + (msg.moneyDesc || 'Payment request') + '</div>';
-        bubbleHtml += '</div>';
+        bubbleHtml += '<div class="money-request"><div class="mr-amount">₹' + msg.moneyAmount.toLocaleString() + '</div>';
+        bubbleHtml += '<div class="mr-desc">' + (msg.moneyDesc || 'Payment') + '</div></div>';
     }
-
     if (msg.time) { bubbleHtml += '<div class="chat-time">' + msg.time + '</div>'; }
     bubbleHtml += '</div>';
 
@@ -1332,14 +1200,13 @@ function sendGroupMessage() {
     if (!text || !currentUser || !currentGroupId) { return; }
     input.value = '';
 
-    // Check if it's a money request: /pay 500 for lunch
     var moneyMatch = text.match(/^\/pay\s+(\d+)\s+(?:for\s+)?(.+)/i);
 
     var msgData = {
         uid: currentUser.uid,
         name: currentUser.displayName || 'User',
         photo: currentUser.photoURL || '',
-        text: moneyMatch ? '💰 Requesting payment:' : text,
+        text: moneyMatch ? '💰 Payment request:' : text,
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         timestamp: firebase.firestore.FieldValue.serverTimestamp()
     };
@@ -1352,24 +1219,19 @@ function sendGroupMessage() {
     db.collection('groups').doc(currentGroupId).collection('messages').add(msgData);
 }
 
-// ============ GROUP EXPENSES ============
 function loadGroupExpenses(groupId) {
     db.collection('groups').doc(groupId).collection('expenses')
-        .orderBy('date', 'desc')
         .get().then(function(snapshot) {
             var html = '';
-            if (snapshot.empty) {
-                html = '<p class="placeholder">No group expenses yet!</p>';
-            } else {
+            if (snapshot.empty) { html = '<p class="placeholder">No group expenses!</p>'; }
+            else {
                 snapshot.forEach(function(doc) {
                     var e = doc.data();
                     var icon = e.category ? e.category.split(' ')[0] : '📦';
-                    html += '<div class="expense-item">';
-                    html += '<div class="expense-item-left"><span class="expense-item-cat">' + icon + '</span>';
+                    html += '<div class="expense-item"><div class="expense-item-left"><span class="expense-item-cat">' + icon + '</span>';
                     html += '<div class="expense-item-info"><h4>' + (e.desc || '') + '</h4>';
-                    html += '<p>Paid by ' + (e.payerName || e.paidByName || 'Unknown') + ' · ' + (e.date || '') + '</p></div></div>';
-                    html += '<span class="expense-item-amount">₹' + (e.amount || 0).toLocaleString() + '</span>';
-                    html += '</div>';
+                    html += '<p>Paid by ' + (e.paidByName || 'Unknown') + ' · ' + (e.date || '') + '</p></div></div>';
+                    html += '<span class="expense-item-amount">₹' + (e.amount || 0).toLocaleString() + '</span></div>';
                 });
             }
             document.getElementById('gvExpenses').innerHTML = html;
@@ -1390,9 +1252,7 @@ function initMap() {
         attribution: '© OpenStreetMap'
     }).addTo(travelMap);
 
-    for (var i = 0; i < allTrips.length; i++) {
-        geocodeTrip(allTrips[i]);
-    }
+    for (var i = 0; i < allTrips.length; i++) { geocodeTrip(allTrips[i]); }
     renderPlacesList();
 }
 
@@ -1401,9 +1261,7 @@ function geocodeTrip(trip) {
         .then(function(res) { return res.json(); })
         .then(function(data) {
             if (data && data.length > 0) {
-                var lat = parseFloat(data[0].lat);
-                var lon = parseFloat(data[0].lon);
-                var marker = L.marker([lat, lon]).addTo(travelMap);
+                var marker = L.marker([parseFloat(data[0].lat), parseFloat(data[0].lon)]).addTo(travelMap);
                 marker.bindPopup('<b>' + trip.name + '</b><br>📍 ' + trip.destination + '<br>' + trip.type);
                 mapMarkers.push(marker);
             }
@@ -1412,22 +1270,19 @@ function geocodeTrip(trip) {
 
 function renderPlacesList() {
     var container = document.getElementById('placesList');
-    if (allTrips.length === 0) {
-        container.innerHTML = '<p class="placeholder">Add trips to see places!</p>';
-        return;
-    }
+    if (allTrips.length === 0) { container.innerHTML = '<p class="placeholder">Add trips!</p>'; return; }
     var html = '';
     for (var i = 0; i < allTrips.length; i++) {
         var t = allTrips[i];
-        html += '<div class="place-item"><div><h4>' + t.type.split(' ')[0] + ' ' + t.destination + '</h4><p>' + t.name + ' · ' + t.startDate + '</p></div></div>';
+        html += '<div class="place-item"><div><h4>' + t.type.split(' ')[0] + ' ' + t.destination + '</h4><p>' + t.name + '</p></div></div>';
     }
     container.innerHTML = html;
 }
 
 // ============ CURRENCY ============
 var exchangeRates = { INR:1, USD:0.0119, EUR:0.0109, GBP:0.0094, JPY:1.78, AUD:0.0183, THB:0.41, SGD:0.016, AED:0.0437, LKR:3.55 };
-var currencyFlags = { INR:'🇮🇳', USD:'🇺🇸', EUR:'🇪🇺', GBP:'🇬🇧', JPY:'🇯🇵', AUD:'🇦🇺', THB:'🇹🇭', SGD:'🇸🇬', AED:'🇦🇪', LKR:'🇱🇰' };
 var currencyNames = { INR:'Indian Rupee', USD:'US Dollar', EUR:'Euro', GBP:'British Pound', JPY:'Japanese Yen', AUD:'Australian Dollar', THB:'Thai Baht', SGD:'Singapore Dollar', AED:'UAE Dirham', LKR:'Sri Lankan Rupee' };
+var currencyFlags = { INR:'🇮🇳', USD:'🇺🇸', EUR:'🇪🇺', GBP:'🇬🇧', JPY:'🇯🇵', AUD:'🇦🇺', THB:'🇹🇭', SGD:'🇸🇬', AED:'🇦🇪', LKR:'🇱🇰' };
 
 function convertCurrency() {
     var amount = parseFloat(document.getElementById('currAmount').value) || 0;
@@ -1442,9 +1297,7 @@ function convertCurrency() {
 function swapCurrency() {
     var f = document.getElementById('currFrom');
     var t = document.getElementById('currTo');
-    var temp = f.value;
-    f.value = t.value;
-    t.value = temp;
+    var temp = f.value; f.value = t.value; t.value = temp;
     convertCurrency();
 }
 
@@ -1452,8 +1305,7 @@ function renderCurrencyTable() {
     var html = '';
     for (var code in exchangeRates) {
         if (code === 'INR') { continue; }
-        var oneUnit = (1 / exchangeRates[code]).toFixed(2);
-        html += '<div class="curr-row"><span><span class="curr-flag">' + (currencyFlags[code] || '') + '</span> ' + code + ' — ' + currencyNames[code] + '</span><span class="curr-rate">1 ' + code + ' = ₹' + oneUnit + '</span></div>';
+        html += '<div class="curr-row"><span><span class="curr-flag">' + (currencyFlags[code] || '') + '</span> ' + code + ' — ' + currencyNames[code] + '</span><span class="curr-rate">1 ' + code + ' = ₹' + (1 / exchangeRates[code]).toFixed(2) + '</span></div>';
     }
     document.getElementById('currencyTable').innerHTML = html;
 }
@@ -1480,6 +1332,7 @@ function saveBucketItem() {
     if (!place) { toast('Enter a place!', 'warn'); return; }
     bucketList.push({ id: 'bk_' + Date.now(), place: place, reason: reason, done: false });
     localStorage.setItem('tlBucket', JSON.stringify(bucketList));
+    saveToCloud();
     document.getElementById('bucketPlace').value = '';
     document.getElementById('bucketReason').value = '';
     closeBucketForm();
@@ -1492,12 +1345,14 @@ function toggleBucket(id) {
         if (bucketList[i].id === id) { bucketList[i].done = !bucketList[i].done; break; }
     }
     localStorage.setItem('tlBucket', JSON.stringify(bucketList));
+    saveToCloud();
     renderBucket();
 }
 
 function deleteBucket(id) {
     bucketList = bucketList.filter(function(b) { return b.id !== id; });
     localStorage.setItem('tlBucket', JSON.stringify(bucketList));
+    saveToCloud();
     renderBucket();
 }
 
@@ -1533,7 +1388,6 @@ window.onload = function() {
         applyTimeTheme();
     }
 
-    // Update theme every minute
     setInterval(function() {
         if (!document.body.classList.contains('dark-theme')) {
             applyTimeTheme();
@@ -1541,14 +1395,11 @@ window.onload = function() {
         }
     }, 60000);
 
-    // Firebase Auth listener
+    // Firebase Auth
     auth.onAuthStateChanged(function(user) {
-        if (user) {
-            onUserLoggedIn(user);
-        }
+        if (user) { onUserLoggedIn(user); }
     });
 
-    // Load data
     updateDashboard();
     renderRecentTrips();
     fetchLiveRates();
