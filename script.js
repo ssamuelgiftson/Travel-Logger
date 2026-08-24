@@ -493,6 +493,7 @@ function openExpenseForm(expenseId) {
     editingExpenseId = expenseId || null;
     document.getElementById('expenseForm').style.display = 'block';
     document.getElementById('expDate').value = new Date().toISOString().slice(0, 10);
+    document.getElementById('expPayer').value = 'Father';
     populateExpensePaidBy();
     populateExpenseSplit();
     var trip = allTrips.find(function(t) { return t.id === currentTripId; });
@@ -505,6 +506,7 @@ function openExpenseForm(expenseId) {
         document.getElementById('expCategory').value = expense.category || '📦 Other';
         document.getElementById('expSubCategory').value = expense.subCategory || '';
         document.getElementById('expAmount').value = expense.amount || '';
+        document.getElementById('expPayer').value = expense.payerName || 'Father';
         document.getElementById('expPaidBy').value = expense.paidBy || 'me';
         var assigned = expense.splitWith || [];
         document.querySelectorAll('#expSplitMembers input[type="checkbox"]').forEach(function(input) {
@@ -573,10 +575,12 @@ function addExpense() {
     var amount = parseFloat(document.getElementById('expAmount').value);
     var category = document.getElementById('expCategory').value;
     var subCategory = document.getElementById('expSubCategory').value.trim();
+    var payerName = document.getElementById('expPayer').value.trim();
     var paidBy = document.getElementById('expPaidBy').value;
 
     if (!desc) { toast('Enter description!', 'warn'); return; }
     if (!date) { toast('Select a date!', 'warn'); return; }
+    if (!payerName) { toast('Enter who paid!', 'warn'); return; }
     if (!amount || amount <= 0) { toast('Enter valid amount!', 'warn'); return; }
 
     var trip = allTrips.find(function(t) { return t.id === currentTripId; });
@@ -606,6 +610,7 @@ function addExpense() {
         amount: amount,
         category: category,
         subCategory: subCategory,
+        payerName: payerName,
         paidBy: paidBy,
         paidByName: paidByName,
         splitWith: splitWith,
@@ -622,6 +627,7 @@ function addExpense() {
     closeExpenseForm();
     document.getElementById('expDesc').value = '';
     document.getElementById('expAmount').value = '';
+    document.getElementById('expPayer').value = 'Father';
 
     // New group expenses are copied to Firestore. Local edits remain available offline.
     if (trip.groupId && currentUser && !existingExpense) {
@@ -696,11 +702,13 @@ function addExpenseFromAll() {
     var amount = parseFloat(document.getElementById('allExpAmount').value);
     var category = document.getElementById('allExpCategory').value;
     var subCategory = document.getElementById('allExpSubCategory').value.trim();
+    var payerName = document.getElementById('allExpPayer').value.trim();
     var trip = allTrips.find(function(t) { return t.id === tripId; });
 
     if (!trip) { toast('Select a trip!', 'warn'); return; }
     if (!desc) { toast('Enter description!', 'warn'); return; }
     if (!date) { toast('Select a date!', 'warn'); return; }
+    if (!payerName) { toast('Enter who paid!', 'warn'); return; }
     if (!amount || amount <= 0) { toast('Enter valid amount!', 'warn'); return; }
     if (!trip.expenses) { trip.expenses = []; }
 
@@ -717,6 +725,7 @@ function addExpenseFromAll() {
         amount: amount,
         category: category,
         subCategory: subCategory,
+        payerName: payerName,
         paidBy: 'me',
         paidByName: 'Me',
         splitWith: splitWith,
@@ -732,9 +741,57 @@ function addExpenseFromAll() {
     }
     document.getElementById('allExpDesc').value = '';
     document.getElementById('allExpAmount').value = '';
+    document.getElementById('allExpPayer').value = 'Father';
     closeAllExpenseForm();
     renderAllExpenses();
     toast('Expense added! 💰', 'ok');
+}
+
+function renderDailyReport() {
+    var container = document.getElementById('dailyReport');
+    var dateInput = document.getElementById('reportDate');
+    if (!container || !dateInput) { return; }
+    var reportDate = dateInput.value;
+    var totals = {};
+    for (var i = 0; i < allTrips.length; i++) {
+        var expenses = allTrips[i].expenses || [];
+        for (var j = 0; j < expenses.length; j++) {
+            var expense = expenses[j];
+            if (expense.date !== reportDate) { continue; }
+            var travelers = expense.splitWith && expense.splitWith.length ? expense.splitWith : [{ uid: 'unknown', name: 'Unassigned' }];
+            var share = expense.amount / travelers.length;
+            for (var k = 0; k < travelers.length; k++) {
+                var traveler = travelers[k];
+                if (!totals[traveler.uid]) { totals[traveler.uid] = { name: traveler.name, amount: 0, collected: true }; }
+                totals[traveler.uid].amount += share;
+                if (!expense.collected) { totals[traveler.uid].collected = false; }
+            }
+        }
+    }
+    var names = Object.keys(totals);
+    if (names.length === 0) { container.innerHTML = '<p class="placeholder">No expenses recorded for this date.</p>'; return; }
+    var total = 0;
+    var html = '<div class="daily-report-total">Total to collect: <strong>₹0</strong></div>';
+    for (var n = 0; n < names.length; n++) {
+        var row = totals[names[n]];
+        total += row.amount;
+        html += '<div class="report-row"><div><strong>' + row.name + '</strong><small>' + (row.collected ? 'Collected' : 'Cash pending') + '</small></div><strong>₹' + Math.round(row.amount).toLocaleString() + '</strong></div>';
+    }
+    html = html.replace('₹0</strong>', '₹' + Math.round(total).toLocaleString() + '</strong>');
+    html += '<button class="btn primary" onclick="markDailyCollected()">✅ Mark this day collected</button>';
+    container.innerHTML = html;
+}
+
+function markDailyCollected() {
+    var reportDate = document.getElementById('reportDate').value;
+    var changed = false;
+    for (var i = 0; i < allTrips.length; i++) {
+        var expenses = allTrips[i].expenses || [];
+        for (var j = 0; j < expenses.length; j++) {
+            if (expenses[j].date === reportDate) { expenses[j].collected = true; changed = true; }
+        }
+    }
+    if (changed) { saveTripsLocal(); renderAllExpenses(); toast('Daily cash marked as collected.', 'ok'); }
 }
 
 function deleteExpense(tripId, expId) {
@@ -780,7 +837,7 @@ function renderTripExpenses(trip) {
             if (e.splitWith && e.splitWith.length) {
                 listHtml += ' · For ' + e.splitWith.map(function(member) { return member.name; }).join(', ');
             }
-            if (e.paidByName && e.paidByName !== 'Me') { listHtml += ' · Paid by ' + e.paidByName; }
+            if (e.payerName || (e.paidByName && e.paidByName !== 'Me')) { listHtml += ' · Paid by ' + (e.payerName || e.paidByName); }
             listHtml += '</p></div></div>';
             listHtml += '<span class="expense-item-amount">₹' + e.amount.toLocaleString() + '</span>';
             listHtml += '<button class="expense-item-edit" onclick="editExpense(\'' + trip.id + '\',\'' + e.id + '\')">✎</button>';
@@ -890,11 +947,14 @@ function renderAllExpenses() {
         var item = allExp[k];
         var catIcon = item.expense.category.split(' ')[0];
         listHtml += '<div class="expense-item"><div class="expense-item-left"><span class="expense-item-cat">' + catIcon + '</span>';
-        listHtml += '<div class="expense-item-info"><h4>' + item.expense.desc + '</h4><p>' + item.trip + (item.expense.subCategory ? ' · ' + item.expense.subCategory : '') + ' · ' + item.expense.date + '</p></div></div>';
+        listHtml += '<div class="expense-item-info"><h4>' + item.expense.desc + '</h4><p>' + item.trip + (item.expense.subCategory ? ' · ' + item.expense.subCategory : '') + ' · ' + item.expense.date + (item.expense.payerName ? ' · Paid by ' + item.expense.payerName : '') + '</p></div></div>';
         listHtml += '<span class="expense-item-amount">₹' + item.expense.amount.toLocaleString() + '</span>';
         listHtml += '<button class="expense-item-edit" onclick="editExpense(\'' + item.tripId + '\',\'' + item.expense.id + '\')">✎</button></div>';
     }
     document.getElementById('allExpensesList').innerHTML = listHtml || '<p class="placeholder">No expenses!</p>';
+    var reportDate = document.getElementById('reportDate');
+    if (reportDate && !reportDate.value) { reportDate.value = new Date().toISOString().slice(0, 10); }
+    renderDailyReport();
 }
 
 // ============ GROUPS ============
@@ -1247,7 +1307,7 @@ function loadGroupExpenses(groupId) {
                     html += '<div class="expense-item">';
                     html += '<div class="expense-item-left"><span class="expense-item-cat">' + icon + '</span>';
                     html += '<div class="expense-item-info"><h4>' + (e.desc || '') + '</h4>';
-                    html += '<p>Paid by ' + (e.paidByName || 'Unknown') + ' · ' + (e.date || '') + '</p></div></div>';
+                    html += '<p>Paid by ' + (e.payerName || e.paidByName || 'Unknown') + ' · ' + (e.date || '') + '</p></div></div>';
                     html += '<span class="expense-item-amount">₹' + (e.amount || 0).toLocaleString() + '</span>';
                     html += '</div>';
                 });

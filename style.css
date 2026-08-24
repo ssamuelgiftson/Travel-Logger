@@ -715,6 +715,12 @@ body {
 
 .expense-item:hover .expense-item-del { opacity: 1; }
 
+.report-date { width: auto; max-width: 160px; padding: 7px 9px; }
+.daily-report-total { background: var(--bg2); padding: 12px; border-radius: var(--rd2); margin-bottom: 8px; }
+.report-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--bg2); }
+.report-row small { display: block; color: var(--txt2); font-size: 0.7rem; }
+.report-row + .btn { margin-top: 12px; }
+
 /* ============ SPLIT EXPENSES ============ */
 .split-members {
     display: flex;
