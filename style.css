@@ -722,6 +722,7 @@ body {
 .report-row + .btn { margin-top: 12px; }
 .advance-form { margin-top: 14px; padding: 14px; background: var(--bg); border: 1px solid var(--bg2); border-radius: var(--rd2); }
 .advance-form h4 { margin-bottom: 8px; color: var(--txt2); }
+.daily-report-panel { border: 2px solid var(--sky1); }
 
 /* ============ SPLIT EXPENSES ============ */
 .split-members {
