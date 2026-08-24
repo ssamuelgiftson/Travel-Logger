@@ -249,7 +249,26 @@
 
 <!-- ALL EXPENSES -->
 <div id="expenses" class="pg">
-    <h2>💰 All Expenses</h2>
+    <div class="pghead"><h2>💰 All Expenses</h2><button class="btn primary" onclick="openAllExpenseForm()">➕ Add Expense</button></div>
+    <div id="allExpenseForm" class="infobox expense-form" style="display:none;">
+        <h3>➕ Add Expense</h3>
+        <label>Trip *</label>
+        <select id="allExpTrip" class="forminput"></select>
+        <div class="tworow">
+            <div><label>What *</label><input type="text" id="allExpDesc" class="forminput" placeholder="e.g. Lunch"></div>
+            <div><label>Amount *</label><input type="number" id="allExpAmount" class="forminput" placeholder="e.g. 500" min="0.01" step="0.01"></div>
+        </div>
+        <label>Category</label>
+        <select id="allExpCategory" class="forminput">
+            <option value="🍔 Food">🍔 Food</option>
+            <option value="🏨 Hotel">🏨 Hotel</option>
+            <option value="🚗 Transport">🚗 Transport</option>
+            <option value="🎟️ Tickets">🎟️ Tickets</option>
+            <option value="🛍️ Shopping">🛍️ Shopping</option>
+            <option value="📦 Other">📦 Other</option>
+        </select>
+        <div class="btnrow"><button class="btn primary" onclick="addExpenseFromAll()">💾 Save</button><button class="btn" onclick="closeAllExpenseForm()">Cancel</button></div>
+    </div>
     <div class="statrow">
         <div class="statcard"><span class="bignum" id="totalSpentAll">₹0</span><span>Total Spent</span></div>
         <div class="statcard"><span class="bignum" id="totalIOwe">₹0</span><span>I Owe</span></div>

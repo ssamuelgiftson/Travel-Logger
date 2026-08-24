@@ -552,7 +552,8 @@ function addExpense() {
     if (!amount || amount <= 0) { toast('Enter valid amount!', 'warn'); return; }
 
     var trip = allTrips.find(function(t) { return t.id === currentTripId; });
-    if (!trip) { return; }
+    if (!trip) { toast('Open a trip before adding an expense.', 'warn'); return; }
+    if (!trip.expenses) { trip.expenses = []; }
 
     // Get split members
     var splitWith = [];
@@ -570,7 +571,7 @@ function addExpense() {
         paidByName = selOpt.options[selOpt.selectedIndex].textContent;
     }
 
-    trip.expenses.push({
+    var expense = {
         id: 'exp_' + Date.now(),
         desc: desc,
         amount: amount,
@@ -579,7 +580,8 @@ function addExpense() {
         paidByName: paidByName,
         splitWith: splitWith,
         date: new Date().toLocaleDateString()
-    });
+    };
+    trip.expenses.push(expense);
 
     saveTripsLocal();
     closeExpenseForm();
@@ -595,6 +597,79 @@ function addExpense() {
     }
 
     viewTrip(currentTripId);
+    toast('Expense added! 💰', 'ok');
+}
+
+function openAllExpenseForm() {
+    var form = document.getElementById('allExpenseForm');
+    var select = document.getElementById('allExpTrip');
+    if (!form || !select) { return; }
+    if (allTrips.length === 0) {
+        toast('Create a trip before adding an expense.', 'warn');
+        navigate('newtrip');
+        return;
+    }
+
+    select.innerHTML = '';
+    for (var i = 0; i < allTrips.length; i++) {
+        var option = document.createElement('option');
+        option.value = allTrips[i].id;
+        option.textContent = allTrips[i].name + ' — ' + allTrips[i].destination;
+        select.appendChild(option);
+    }
+    if (currentTripId && allTrips.some(function(t) { return t.id === currentTripId; })) {
+        select.value = currentTripId;
+    }
+    form.style.display = 'block';
+}
+
+function closeAllExpenseForm() {
+    var form = document.getElementById('allExpenseForm');
+    if (form) { form.style.display = 'none'; }
+}
+
+function addExpenseFromAll() {
+    var tripId = document.getElementById('allExpTrip').value;
+    var desc = document.getElementById('allExpDesc').value.trim();
+    var amount = parseFloat(document.getElementById('allExpAmount').value);
+    var category = document.getElementById('allExpCategory').value;
+    var trip = allTrips.find(function(t) { return t.id === tripId; });
+
+    if (!trip) { toast('Select a trip!', 'warn'); return; }
+    if (!desc) { toast('Enter description!', 'warn'); return; }
+    if (!amount || amount <= 0) { toast('Enter valid amount!', 'warn'); return; }
+    if (!trip.expenses) { trip.expenses = []; }
+
+    var expense = {
+        id: 'exp_' + Date.now(),
+        desc: desc,
+        amount: amount,
+        category: category,
+        paidBy: 'me',
+        paidByName: 'Me',
+        splitWith: [],
+        date: new Date().toLocaleDateString()
+    };
+    if (trip.groupId) {
+        var group = myGroups.find(function(g) { return g.id === trip.groupId; });
+        if (group && group.members) {
+            expense.splitWith = group.members.map(function(member) {
+                return { uid: member.uid, name: member.name };
+            });
+        }
+    }
+    trip.expenses.push(expense);
+    currentTripId = tripId;
+    saveTripsLocal();
+    if (trip.groupId && currentUser && typeof db !== 'undefined') {
+        expense.tripName = trip.name;
+        expense.paidByUid = currentUser.uid;
+        db.collection('groups').doc(trip.groupId).collection('expenses').add(expense);
+    }
+    document.getElementById('allExpDesc').value = '';
+    document.getElementById('allExpAmount').value = '';
+    closeAllExpenseForm();
+    renderAllExpenses();
     toast('Expense added! 💰', 'ok');
 }
 
