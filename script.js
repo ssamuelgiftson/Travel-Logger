@@ -17,6 +17,7 @@ function toast(msg, type) {
 var allTrips = JSON.parse(localStorage.getItem('tlTrips') || '[]');
 var bucketList = JSON.parse(localStorage.getItem('tlBucket') || '[]');
 var advancePayments = JSON.parse(localStorage.getItem('tlAdvances') || '[]');
+var collections = JSON.parse(localStorage.getItem('tlCollections') || '[]');
 var currentTripId = null;
 var currentGroupId = null;
 var currentUser = null;
@@ -160,6 +161,7 @@ function saveToCloud() {
         trips: JSON.stringify(allTrips),
         bucketList: JSON.stringify(bucketList),
         advances: JSON.stringify(advancePayments),
+                collections: JSON.stringify(collections),
         updatedAt: new Date().toISOString()
     }, { merge: true }).catch(function(err) {
         console.log('Cloud save error:', err);
@@ -193,7 +195,15 @@ function loadCloudData(userId) {
                 }
             } catch (e) {}
         }
-
+        if (data.collections) {
+            try {
+                var cloudCol = JSON.parse(data.collections);
+                if (cloudCol.length > collections.length) {
+                    collections = cloudCol;
+                    localStorage.setItem('tlCollections', JSON.stringify(collections));
+                }
+            } catch (e) {}
+        }
         // Load advances
         if (data.advances) {
             try {
@@ -961,6 +971,8 @@ function renderAllExpenses() {
         listHtml += '<span class="expense-item-amount">₹' + item.expense.amount.toLocaleString() + '</span></div>';
     }
     document.getElementById('allExpensesList').innerHTML = listHtml || '<p class="placeholder">No expenses!</p>';
+        renderCollections();
+    renderReconciliation();
 }
 
 // ============ GROUPS ============
@@ -1237,7 +1249,200 @@ function loadGroupExpenses(groupId) {
             document.getElementById('gvExpenses').innerHTML = html;
         });
 }
+// ============ COLLECTIONS ============
+function showCollectionForm() {
+    var form = document.getElementById('collectionForm');
+    if (form) {
+        form.style.display = 'block';
+        document.getElementById('colDate').value = new Date().toISOString().slice(0, 10);
+        var sel = document.getElementById('colTrip');
+        if (sel) {
+            sel.innerHTML = '<option value="">-- Select Trip --</option>';
+            for (var i = 0; i < allTrips.length; i++) {
+                var opt = document.createElement('option');
+                opt.value = allTrips[i].id;
+                opt.textContent = allTrips[i].name;
+                sel.appendChild(opt);
+            }
+        }
+    }
+}
 
+function hideCollectionForm() {
+    var form = document.getElementById('collectionForm');
+    if (form) { form.style.display = 'none'; }
+}
+
+function saveCollection() {
+    var from = document.getElementById('colFrom').value.trim();
+    var amount = parseFloat(document.getElementById('colAmount').value);
+    var purpose = document.getElementById('colPurpose').value.trim();
+    var date = document.getElementById('colDate').value;
+    var tripId = document.getElementById('colTrip').value;
+    var category = document.getElementById('colCategory').value;
+    var note = document.getElementById('colNote').value.trim();
+
+    if (!from) { toast('Enter who paid!', 'warn'); return; }
+    if (!amount || amount <= 0) { toast('Enter valid amount!', 'warn'); return; }
+    if (!purpose) { toast('Enter what for!', 'warn'); return; }
+
+    collections.push({
+        id: 'col_' + Date.now(),
+        from: from,
+        amount: amount,
+        purpose: purpose,
+        date: date || new Date().toLocaleDateString(),
+        tripId: tripId || null,
+        category: category || '',
+        note: note
+    });
+
+    localStorage.setItem('tlCollections', JSON.stringify(collections));
+    saveToCloud();
+
+    document.getElementById('colFrom').value = '';
+    document.getElementById('colAmount').value = '';
+    document.getElementById('colPurpose').value = '';
+    document.getElementById('colNote').value = '';
+    hideCollectionForm();
+
+    renderCollections();
+    renderReconciliation();
+    toast('₹' + amount.toLocaleString() + ' collected from ' + from + '! 💵', 'ok');
+}
+
+function deleteCollection(colId) {
+    if (!confirm('Delete this collection?')) { return; }
+    collections = collections.filter(function(c) { return c.id !== colId; });
+    localStorage.setItem('tlCollections', JSON.stringify(collections));
+    saveToCloud();
+    renderCollections();
+    renderReconciliation();
+}
+
+function renderCollections() {
+    var container = document.getElementById('collectionsList');
+    if (!container) { return; }
+    if (collections.length === 0) {
+        container.innerHTML = '<p class="placeholder">No collections yet. Click ➕ to record!</p>';
+        return;
+    }
+    var html = '';
+    for (var i = collections.length - 1; i >= 0; i--) {
+        var c = collections[i];
+        var tripName = '';
+        if (c.tripId) {
+            var trip = allTrips.find(function(t) { return t.id === c.tripId; });
+            if (trip) { tripName = trip.name; }
+        }
+        html += '<div class="collection-item">';
+        html += '<div class="collection-header">';
+        html += '<h4>💵 ' + c.from + ' → ' + c.purpose + '</h4>';
+        html += '<div><span class="collection-amount">₹' + c.amount.toLocaleString() + '</span>';
+        html += '<button class="collection-del" onclick="deleteCollection(\'' + c.id + '\')">✕</button></div></div>';
+        html += '<div class="collection-details">📅 ' + c.date;
+        if (tripName) { html += ' · ✈️ ' + tripName; }
+        if (c.category) { html += ' · ' + c.category; }
+        if (c.note) { html += ' · 📝 ' + c.note; }
+        html += '</div></div>';
+    }
+    container.innerHTML = html;
+}
+
+function renderReconciliation() {
+    var container = document.getElementById('reconciliationSummary');
+    if (!container) { return; }
+    if (collections.length === 0) { container.innerHTML = ''; return; }
+
+    var collectedByPerson = {};
+    for (var i = 0; i < collections.length; i++) {
+        var c = collections[i];
+        var key = c.from.toLowerCase();
+        if (!collectedByPerson[key]) { collectedByPerson[key] = { name: c.from, total: 0, items: [] }; }
+        collectedByPerson[key].total += c.amount;
+        collectedByPerson[key].items.push(c);
+    }
+
+    var expensesByPerson = {};
+    for (var t = 0; t < allTrips.length; t++) {
+        var trip = allTrips[t];
+        if (!trip.expenses) { continue; }
+        for (var e = 0; e < trip.expenses.length; e++) {
+            var exp = trip.expenses[e];
+            if (exp.splitWith) {
+                var perPerson = exp.amount / exp.splitWith.length;
+                for (var s = 0; s < exp.splitWith.length; s++) {
+                    var mKey = exp.splitWith[s].name.toLowerCase();
+                    if (!expensesByPerson[mKey]) { expensesByPerson[mKey] = { name: exp.splitWith[s].name, total: 0, items: [] }; }
+                    expensesByPerson[mKey].total += perPerson;
+                    expensesByPerson[mKey].items.push({ desc: exp.desc, category: exp.category, amount: perPerson });
+                }
+            }
+        }
+    }
+
+    var allPeople = {};
+    for (var ck in collectedByPerson) { allPeople[ck] = true; }
+    for (var ek in expensesByPerson) { allPeople[ek] = true; }
+
+    var html = '<h4 style="margin-bottom:12px;color:var(--sky1);">📊 Reconciliation</h4>';
+    var hasData = false;
+
+    for (var person in allPeople) {
+        var collected = collectedByPerson[person] ? collectedByPerson[person].total : 0;
+        var expenses = expensesByPerson[person] ? expensesByPerson[person].total : 0;
+        var diff = collected - expenses;
+        var personName = (collectedByPerson[person] ? collectedByPerson[person].name : '') || (expensesByPerson[person] ? expensesByPerson[person].name : person);
+
+        if (collected === 0 && expenses === 0) { continue; }
+        hasData = true;
+
+        var status = '';
+        var statusClass = '';
+        var diffText = '';
+
+        if (Math.abs(diff) < 1) {
+            status = '✅ Exact'; statusClass = 'exact';
+            diffText = '✅ All settled!';
+        } else if (diff < 0) {
+            status = '🔴 Short'; statusClass = 'short';
+            diffText = '🔴 ' + personName + ' needs to pay ₹' + Math.abs(Math.round(diff)).toLocaleString() + ' more';
+        } else {
+            status = '🟡 Excess'; statusClass = 'excess';
+            diffText = '🟡 Refund ₹' + Math.round(diff).toLocaleString() + ' to ' + personName;
+        }
+
+        html += '<div class="recon-card ' + statusClass + '">';
+        html += '<div class="recon-header"><h4>👤 ' + personName + '</h4><span class="recon-status ' + statusClass + '">' + status + '</span></div>';
+        html += '<div class="recon-row"><span>💵 Collected:</span><span>₹' + Math.round(collected).toLocaleString() + '</span></div>';
+        html += '<div class="recon-row"><span>💰 Expenses:</span><span>₹' + Math.round(expenses).toLocaleString() + '</span></div>';
+        html += '<div class="recon-diff ' + statusClass + '">' + diffText + '</div>';
+
+        if (collectedByPerson[person] && collectedByPerson[person].items.length > 0) {
+            html += '<div style="margin-top:6px;font-size:0.72rem;color:var(--txt2);"><b>Collections:</b>';
+            for (var ci = 0; ci < collectedByPerson[person].items.length; ci++) {
+                var cItem = collectedByPerson[person].items[ci];
+                html += '<div>• ' + cItem.purpose + ' — ₹' + cItem.amount.toLocaleString() + '</div>';
+            }
+            html += '</div>';
+        }
+
+        if (expensesByPerson[person] && expensesByPerson[person].items.length > 0) {
+            html += '<div style="margin-top:4px;font-size:0.72rem;color:var(--txt2);"><b>Expenses:</b>';
+            var eItems = expensesByPerson[person].items;
+            for (var ei = 0; ei < Math.min(eItems.length, 5); ei++) {
+                html += '<div>• ' + eItems[ei].desc + ' (' + eItems[ei].category + ') — ₹' + Math.round(eItems[ei].amount).toLocaleString() + '</div>';
+            }
+            if (eItems.length > 5) { html += '<div>... +' + (eItems.length - 5) + ' more</div>'; }
+            html += '</div>';
+        }
+
+        html += '</div>';
+    }
+
+    if (!hasData) { html += '<p class="placeholder">Record collections & add expenses to see reconciliation!</p>'; }
+    container.innerHTML = html;
+}
 // ============ MAP ============
 var travelMap = null;
 var mapMarkers = [];
