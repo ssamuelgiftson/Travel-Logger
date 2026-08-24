@@ -989,12 +989,87 @@ function viewGroup(groupId) {
         membersHtml += '</div>';
     }
     document.getElementById('gvMembers').innerHTML = membersHtml;
+    var isAdmin = currentUser && group.members.some(function(member) {
+        return member.uid === currentUser.uid && member.role === 'admin';
+    });
+    document.getElementById('addMemberBox').style.display = isAdmin ? 'block' : 'none';
 
     // Load chat
     loadGroupChat(groupId);
 
     // Load group expenses
     loadGroupExpenses(groupId);
+}
+
+function addManualMember() {
+    var nameInput = document.getElementById('manualMemberName');
+    var emailInput = document.getElementById('manualMemberEmail');
+    var name = nameInput.value.trim();
+    var email = emailInput.value.trim();
+    var group = myGroups.find(function(g) { return g.id === currentGroupId; });
+    if (!currentUser || !group) { toast('Group not found!', 'err'); return; }
+    var isAdmin = group.members.some(function(member) {
+        return member.uid === currentUser.uid && member.role === 'admin';
+    });
+    if (!isAdmin) { toast('Only the group admin can add members.', 'warn'); return; }
+    if (!name) { toast('Enter the member name!', 'warn'); return; }
+    if (group.members.some(function(member) {
+        return member.name.toLowerCase() === name.toLowerCase() || (email && member.email === email);
+    })) {
+        toast('That member is already in the group!', 'warn');
+        return;
+    }
+
+    var newMember = {
+        uid: 'manual_' + Date.now(),
+        name: name,
+        email: email,
+        photo: '',
+        role: 'member'
+    };
+    db.collection('groups').doc(currentGroupId).update({
+        members: firebase.firestore.FieldValue.arrayUnion(newMember)
+    }).then(function() {
+        nameInput.value = '';
+        emailInput.value = '';
+        toast(name + ' added to the group!', 'ok');
+        loadMyGroups();
+        setTimeout(function() { viewGroup(currentGroupId); }, 300);
+    }).catch(function(err) {
+        toast('Could not add member: ' + err.message, 'err');
+    });
+}
+
+function leaveGroup() {
+    var group = myGroups.find(function(g) { return g.id === currentGroupId; });
+    if (!currentUser || !group) { toast('Group not found!', 'err'); return; }
+    var member = group.members.find(function(item) { return item.uid === currentUser.uid; });
+    if (!member) { toast('You are not a member of this group.', 'warn'); return; }
+    var adminCount = group.members.filter(function(item) { return item.role === 'admin'; }).length;
+    if (member.role === 'admin' && adminCount === 1) {
+        toast('Add another admin before leaving this group.', 'warn');
+        return;
+    }
+    if (!confirm('Leave "' + group.name + '"?')) { return; }
+
+    db.collection('groups').doc(currentGroupId).update({
+        members: firebase.firestore.FieldValue.arrayRemove(member)
+    }).then(function() {
+        for (var i = 0; i < allTrips.length; i++) {
+            if (allTrips[i].groupId === currentGroupId) {
+                allTrips[i].groupId = null;
+                allTrips[i].travelerMode = 'individual';
+            }
+        }
+        saveTripsLocal();
+        if (chatListener) { chatListener(); chatListener = null; }
+        currentGroupId = null;
+        toast('You left the group.', 'info');
+        navigate('groups');
+        loadMyGroups();
+    }).catch(function(err) {
+        toast('Could not leave group: ' + err.message, 'err');
+    });
 }
 
 function copyCode(code) {

@@ -227,6 +227,15 @@
     <div class="infobox">
         <h3>👥 Members</h3>
         <div id="gvMembers"></div>
+        <div id="addMemberBox" class="add-member-box">
+            <h4>➕ Add member manually</h4>
+            <div class="tworow">
+                <input type="text" id="manualMemberName" class="forminput" placeholder="Member name">
+                <input type="email" id="manualMemberEmail" class="forminput" placeholder="Email (optional)">
+            </div>
+            <button class="btn primary" onclick="addManualMember()">Add Member</button>
+        </div>
+        <button class="btn danger leave-group-btn" onclick="leaveGroup()">Leave Group</button>
     </div>
 
     <!-- Group Chat -->
