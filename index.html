@@ -161,7 +161,7 @@
         <div id="expenseForm" class="expense-form" style="display:none;">
             <div class="tworow">
                 <div><label>What *</label><input type="text" id="expDesc" class="forminput" placeholder="e.g. Lunch"></div>
-                <div><label>Amount *</label><input type="number" id="expAmount" class="forminput" placeholder="e.g. 500"></div>
+                <div><label>Date *</label><input type="date" id="expDate" class="forminput"></div>
             </div>
             <div class="tworow">
                 <div><label>Category</label>
@@ -174,11 +174,15 @@
                         <option value="📦 Other">📦 Other</option>
                     </select>
                 </div>
+                <div><label>Sub-Category</label><input type="text" id="expSubCategory" class="forminput" placeholder="e.g. Dinner"></div>
+            </div>
+            <div class="tworow">
+                <div><label>Amount *</label><input type="number" id="expAmount" class="forminput" placeholder="e.g. 500" min="0.01" step="0.01"></div>
                 <div><label>Paid By</label>
                     <select id="expPaidBy" class="forminput"><option value="me">Me</option></select>
                 </div>
             </div>
-            <label>Split Between</label>
+            <label>Traveler (To be Paid) *</label>
             <div id="expSplitMembers" class="split-members"></div>
             <div class="btnrow"><button class="btn primary" onclick="addExpense()">💾 Save</button><button class="btn" onclick="closeExpenseForm()">Cancel</button></div>
         </div>
@@ -262,12 +266,12 @@
     <div id="allExpenseForm" class="infobox expense-form" style="display:none;">
         <h3>➕ Add Expense</h3>
         <label>Trip *</label>
-        <select id="allExpTrip" class="forminput"></select>
+        <select id="allExpTrip" class="forminput" onchange="populateAllExpenseTravelers()"></select>
         <div class="tworow">
             <div><label>What *</label><input type="text" id="allExpDesc" class="forminput" placeholder="e.g. Lunch"></div>
-            <div><label>Amount *</label><input type="number" id="allExpAmount" class="forminput" placeholder="e.g. 500" min="0.01" step="0.01"></div>
+            <div><label>Date *</label><input type="date" id="allExpDate" class="forminput"></div>
         </div>
-        <label>Category</label>
+        <label>Category *</label>
         <select id="allExpCategory" class="forminput">
             <option value="🍔 Food">🍔 Food</option>
             <option value="🏨 Hotel">🏨 Hotel</option>
@@ -276,6 +280,12 @@
             <option value="🛍️ Shopping">🛍️ Shopping</option>
             <option value="📦 Other">📦 Other</option>
         </select>
+        <label>Sub-Category</label>
+        <input type="text" id="allExpSubCategory" class="forminput" placeholder="e.g. Dinner">
+        <label>Amount *</label>
+        <input type="number" id="allExpAmount" class="forminput" placeholder="e.g. 500" min="0.01" step="0.01">
+        <label>Traveler (To be Paid) *</label>
+        <div id="allExpTravelers" class="split-members"></div>
         <div class="btnrow"><button class="btn primary" onclick="addExpenseFromAll()">💾 Save</button><button class="btn" onclick="closeAllExpenseForm()">Cancel</button></div>
     </div>
     <div class="statrow">

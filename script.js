@@ -490,6 +490,7 @@ function addItineraryDay() {
 // ============ EXPENSES ============
 function openExpenseForm() {
     document.getElementById('expenseForm').style.display = 'block';
+    document.getElementById('expDate').value = new Date().toISOString().slice(0, 10);
     populateExpensePaidBy();
     populateExpenseSplit();
 }
@@ -525,7 +526,9 @@ function populateExpenseSplit() {
 
     var trip = allTrips.find(function(t) { return t.id === currentTripId; });
     if (!trip || !trip.groupId) {
-        container.innerHTML = '<p class="small">Personal trip — no split needed</p>';
+        var personalName = currentUser && currentUser.displayName ? currentUser.displayName : 'Me';
+        var personalUid = currentUser ? currentUser.uid : 'me';
+        container.innerHTML = '<label class="split-member"><input type="checkbox" checked data-uid="' + personalUid + '" data-name="' + personalName + '"><span>' + personalName + '</span></label>';
         return;
     }
 
@@ -544,11 +547,14 @@ function populateExpenseSplit() {
 
 function addExpense() {
     var desc = document.getElementById('expDesc').value.trim();
+    var date = document.getElementById('expDate').value;
     var amount = parseFloat(document.getElementById('expAmount').value);
     var category = document.getElementById('expCategory').value;
+    var subCategory = document.getElementById('expSubCategory').value.trim();
     var paidBy = document.getElementById('expPaidBy').value;
 
     if (!desc) { toast('Enter description!', 'warn'); return; }
+    if (!date) { toast('Select a date!', 'warn'); return; }
     if (!amount || amount <= 0) { toast('Enter valid amount!', 'warn'); return; }
 
     var trip = allTrips.find(function(t) { return t.id === currentTripId; });
@@ -564,6 +570,7 @@ function addExpense() {
             name: checkboxes[i].getAttribute('data-name')
         });
     }
+    if (splitWith.length === 0) { toast('Select at least one traveler!', 'warn'); return; }
 
     var paidByName = 'Me';
     if (paidBy !== 'me' && currentUser) {
@@ -576,10 +583,11 @@ function addExpense() {
         desc: desc,
         amount: amount,
         category: category,
+        subCategory: subCategory,
         paidBy: paidBy,
         paidByName: paidByName,
         splitWith: splitWith,
-        date: new Date().toLocaleDateString()
+        date: date
     };
     trip.expenses.push(expense);
 
@@ -620,7 +628,28 @@ function openAllExpenseForm() {
     if (currentTripId && allTrips.some(function(t) { return t.id === currentTripId; })) {
         select.value = currentTripId;
     }
+    document.getElementById('allExpDate').value = new Date().toISOString().slice(0, 10);
+    populateAllExpenseTravelers();
     form.style.display = 'block';
+}
+
+function populateAllExpenseTravelers() {
+    var container = document.getElementById('allExpTravelers');
+    var select = document.getElementById('allExpTrip');
+    if (!container || !select) { return; }
+    var trip = allTrips.find(function(item) { return item.id === select.value; });
+    var members = [];
+    if (trip && trip.groupId) {
+        var group = myGroups.find(function(item) { return item.id === trip.groupId; });
+        members = group && group.members ? group.members : [];
+    }
+    if (members.length === 0) {
+        var name = currentUser && currentUser.displayName ? currentUser.displayName : 'Me';
+        members = [{ uid: currentUser ? currentUser.uid : 'me', name: name }];
+    }
+    container.innerHTML = members.map(function(member) {
+        return '<label class="split-member"><input type="checkbox" checked data-uid="' + member.uid + '" data-name="' + member.name + '"><span>' + member.name + '</span></label>';
+    }).join('');
 }
 
 function closeAllExpenseForm() {
@@ -631,33 +660,36 @@ function closeAllExpenseForm() {
 function addExpenseFromAll() {
     var tripId = document.getElementById('allExpTrip').value;
     var desc = document.getElementById('allExpDesc').value.trim();
+    var date = document.getElementById('allExpDate').value;
     var amount = parseFloat(document.getElementById('allExpAmount').value);
     var category = document.getElementById('allExpCategory').value;
+    var subCategory = document.getElementById('allExpSubCategory').value.trim();
     var trip = allTrips.find(function(t) { return t.id === tripId; });
 
     if (!trip) { toast('Select a trip!', 'warn'); return; }
     if (!desc) { toast('Enter description!', 'warn'); return; }
+    if (!date) { toast('Select a date!', 'warn'); return; }
     if (!amount || amount <= 0) { toast('Enter valid amount!', 'warn'); return; }
     if (!trip.expenses) { trip.expenses = []; }
+
+    var splitWith = [];
+    var checkboxes = document.querySelectorAll('#allExpTravelers input[type="checkbox"]:checked');
+    for (var i = 0; i < checkboxes.length; i++) {
+        splitWith.push({ uid: checkboxes[i].getAttribute('data-uid'), name: checkboxes[i].getAttribute('data-name') });
+    }
+    if (splitWith.length === 0) { toast('Select at least one traveler!', 'warn'); return; }
 
     var expense = {
         id: 'exp_' + Date.now(),
         desc: desc,
         amount: amount,
         category: category,
+        subCategory: subCategory,
         paidBy: 'me',
         paidByName: 'Me',
-        splitWith: [],
-        date: new Date().toLocaleDateString()
+        splitWith: splitWith,
+        date: date
     };
-    if (trip.groupId) {
-        var group = myGroups.find(function(g) { return g.id === trip.groupId; });
-        if (group && group.members) {
-            expense.splitWith = group.members.map(function(member) {
-                return { uid: member.uid, name: member.name };
-            });
-        }
-    }
     trip.expenses.push(expense);
     currentTripId = tripId;
     saveTripsLocal();
@@ -706,7 +738,10 @@ function renderTripExpenses(trip) {
             listHtml += '<div class="expense-item-left">';
             listHtml += '<span class="expense-item-cat">' + icon + '</span>';
             listHtml += '<div class="expense-item-info"><h4>' + e.desc + '</h4>';
-            listHtml += '<p>' + e.category + ' · ' + e.date;
+            listHtml += '<p>' + e.category + (e.subCategory ? ' · ' + e.subCategory : '') + ' · ' + e.date;
+            if (e.splitWith && e.splitWith.length) {
+                listHtml += ' · For ' + e.splitWith.map(function(member) { return member.name; }).join(', ');
+            }
             if (e.paidByName && e.paidByName !== 'Me') { listHtml += ' · Paid by ' + e.paidByName; }
             listHtml += '</p></div></div>';
             listHtml += '<span class="expense-item-amount">₹' + e.amount.toLocaleString() + '</span>';
@@ -816,7 +851,7 @@ function renderAllExpenses() {
         var item = allExp[k];
         var catIcon = item.expense.category.split(' ')[0];
         listHtml += '<div class="expense-item"><div class="expense-item-left"><span class="expense-item-cat">' + catIcon + '</span>';
-        listHtml += '<div class="expense-item-info"><h4>' + item.expense.desc + '</h4><p>' + item.trip + ' · ' + item.expense.date + '</p></div></div>';
+        listHtml += '<div class="expense-item-info"><h4>' + item.expense.desc + '</h4><p>' + item.trip + (item.expense.subCategory ? ' · ' + item.expense.subCategory : '') + ' · ' + item.expense.date + '</p></div></div>';
         listHtml += '<span class="expense-item-amount">₹' + item.expense.amount.toLocaleString() + '</span></div>';
     }
     document.getElementById('allExpensesList').innerHTML = listHtml || '<p class="placeholder">No expenses!</p>';
