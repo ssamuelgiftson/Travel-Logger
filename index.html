@@ -112,10 +112,24 @@
             <option value="🌿 Nature">🌿 Nature</option>
             <option value="🎢 Adventure">🎢 Adventure</option>
         </select>
-        <label>Add to Group (optional)</label>
+        <label>Who is traveling?</label>
+        <div class="traveler-choice" role="group" aria-label="Travelers">
+            <label class="traveler-option selected" id="individualOption">
+                <input type="radio" name="travelerMode" value="individual" checked onchange="toggleTravelerMode()">
+                <span class="traveler-option-icon">🧍</span>
+                <span><strong>Just me</strong><small>Personal trip and expenses</small></span>
+            </label>
+            <label class="traveler-option" id="groupOption">
+                <input type="radio" name="travelerMode" value="group" onchange="toggleTravelerMode()">
+                <span class="traveler-option-icon">👥</span>
+                <span><strong>A group</strong><small>Split costs with travelers</small></span>
+            </label>
+        </div>
+        <label id="tripGroupLabel" class="hidden-field">Select travel group</label>
         <select id="tripGroup" class="forminput">
             <option value="">No group — personal trip</option>
         </select>
+        <p id="travelerModeHint" class="field-hint">You are the only traveler. Expenses stay personal.</p>
         <label>Notes</label>
         <textarea id="tripNotes" class="forminput textarea" placeholder="Any notes..."></textarea>
         <button class="btn primary fullwidth" onclick="saveTrip()" style="margin-top:12px;">✈️ Create Trip</button>

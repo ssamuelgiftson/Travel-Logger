@@ -301,6 +301,22 @@ body {
 
 .pghead h2 { font-size: 1.4rem; font-weight: 700; }
 
+/* ============ TRAVELER CHOICE ============ */
+.traveler-choice { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 4px 0 12px; }
+.traveler-option { display: flex; align-items: center; gap: 10px; padding: 12px; border: 2px solid var(--bg2); border-radius: var(--rd2); cursor: pointer; transition: 0.2s; background: var(--card); }
+.traveler-option:hover, .traveler-option.selected { border-color: var(--sky1); background: var(--bg2); }
+.traveler-option input { accent-color: var(--sky1); }
+.traveler-option-icon { font-size: 1.35rem; }
+.traveler-option strong, .traveler-option small { display: block; }
+.traveler-option small { color: var(--txt2); font-size: 0.72rem; line-height: 1.3; }
+.field-hint { color: var(--txt2); font-size: 0.76rem; margin: -5px 0 10px; }
+.hidden-field { display: none !important; }
+.traveler-badge { display: inline-block; color: var(--txt2); background: var(--bg2); border-radius: 999px; padding: 4px 10px; font-size: 0.75rem; font-weight: 600; margin-bottom: 4px; }
+
+@media (max-width: 520px) {
+    .traveler-choice { grid-template-columns: 1fr; }
+}
+
 /* ============ HERO ============ */
 .hero {
     text-align: center;

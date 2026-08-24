@@ -213,10 +213,12 @@ function saveTrip() {
     var type = document.getElementById('tripType').value;
     var notes = document.getElementById('tripNotes').value.trim();
     var groupId = document.getElementById('tripGroup').value;
+    var travelerMode = document.querySelector('input[name="travelerMode"]:checked').value;
 
     if (!name) { toast('Enter trip name!', 'warn'); return; }
     if (!dest) { toast('Enter destination!', 'warn'); return; }
     if (!start || !end) { toast('Pick dates!', 'warn'); return; }
+    if (travelerMode === 'group' && !groupId) { toast('Select a travel group!', 'warn'); return; }
 
     var startDate = new Date(start);
     var endDate = new Date(end);
@@ -233,6 +235,7 @@ function saveTrip() {
         days: days,
         type: type,
         notes: notes,
+        travelerMode: travelerMode,
         groupId: groupId || null,
         expenses: [],
         itinerary: [],
@@ -366,6 +369,27 @@ function populateGroupSelect() {
         opt.textContent = '👥 ' + g.name;
         sel.appendChild(opt);
     }
+    toggleTravelerMode();
+}
+
+function toggleTravelerMode() {
+    var modeInput = document.querySelector('input[name="travelerMode"]:checked');
+    var mode = modeInput ? modeInput.value : 'individual';
+    var groupSelect = document.getElementById('tripGroup');
+    var groupLabel = document.getElementById('tripGroupLabel');
+    var hint = document.getElementById('travelerModeHint');
+    var individualOption = document.getElementById('individualOption');
+    var groupOption = document.getElementById('groupOption');
+    if (!groupSelect || !groupLabel || !hint) { return; }
+
+    groupSelect.classList.toggle('hidden-field', mode !== 'group');
+    groupLabel.classList.toggle('hidden-field', mode !== 'group');
+    hint.textContent = mode === 'group'
+        ? 'Choose a group to share expenses and settle up together.'
+        : 'You are the only traveler. Expenses stay personal.';
+    if (individualOption) { individualOption.classList.toggle('selected', mode === 'individual'); }
+    if (groupOption) { groupOption.classList.toggle('selected', mode === 'group'); }
+    if (mode !== 'group') { groupSelect.value = ''; }
 }
 
 // ============ TRIP VIEW ============
@@ -382,6 +406,7 @@ function viewTrip(tripId) {
 
     var h = '<h2>' + trip.name + '</h2>';
     h += '<p style="color:var(--txt2);margin-bottom:12px;">📍 ' + trip.destination + ' · ' + getTripStatusLabel(status) + '</p>';
+    h += '<p class="traveler-badge">' + (trip.travelerMode === 'group' || trip.groupId ? '👥 Group trip' : '🧍 Personal trip') + '</p>';
     h += '<div class="trip-detail-stats">';
     h += '<div class="td-stat"><span>📅 ' + trip.days + '</span><span>Days</span></div>';
     h += '<div class="td-stat"><span>₹' + spent.toLocaleString() + '</span><span>Spent</span></div>';
