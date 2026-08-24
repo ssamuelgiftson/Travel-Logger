@@ -768,18 +768,78 @@ function renderDailyReport() {
             }
         }
     }
+    for (var tripIndex = 0; tripIndex < allTrips.length; tripIndex++) {
+        var advances = allTrips[tripIndex].advances || [];
+        for (var advanceIndex = 0; advanceIndex < advances.length; advanceIndex++) {
+            var advance = advances[advanceIndex];
+            if (advance.date > reportDate) { continue; }
+            if (!totals[advance.travelerUid]) { totals[advance.travelerUid] = { name: advance.travelerName, amount: 0, advance: 0, collected: false }; }
+            totals[advance.travelerUid].advance += advance.amount;
+        }
+    }
     var names = Object.keys(totals);
     if (names.length === 0) { container.innerHTML = '<p class="placeholder">No expenses recorded for this date.</p>'; return; }
     var total = 0;
     var html = '<div class="daily-report-total">Total to collect: <strong>₹0</strong></div>';
     for (var n = 0; n < names.length; n++) {
         var row = totals[names[n]];
-        total += row.amount;
-        html += '<div class="report-row"><div><strong>' + row.name + '</strong><small>' + (row.collected ? 'Collected' : 'Cash pending') + '</small></div><strong>₹' + Math.round(row.amount).toLocaleString() + '</strong></div>';
+        var balance = Math.max(0, row.amount - (row.advance || 0));
+        var credit = Math.max(0, (row.advance || 0) - row.amount);
+        total += balance;
+        html += '<div class="report-row"><div><strong>' + row.name + '</strong><small>Expenses: ₹' + Math.round(row.amount).toLocaleString() + ' · Advance: ₹' + Math.round(row.advance || 0).toLocaleString() + (credit ? ' · Credit: ₹' + Math.round(credit).toLocaleString() : '') + '</small></div><strong>₹' + Math.round(balance).toLocaleString() + '</strong></div>';
     }
     html = html.replace('₹0</strong>', '₹' + Math.round(total).toLocaleString() + '</strong>');
     html += '<button class="btn primary" onclick="markDailyCollected()">✅ Mark this day collected</button>';
     container.innerHTML = html;
+}
+
+function openAdvanceForm() {
+    var form = document.getElementById('advanceForm');
+    if (!form || allTrips.length === 0) { toast('Create a trip before recording an advance.', 'warn'); return; }
+    var select = document.getElementById('advanceTrip');
+    select.innerHTML = allTrips.map(function(trip) {
+        return '<option value="' + trip.id + '">' + trip.name + ' — ' + trip.destination + '</option>';
+    }).join('');
+    document.getElementById('advanceDate').value = document.getElementById('reportDate').value || new Date().toISOString().slice(0, 10);
+    populateAdvanceTravelers();
+    form.style.display = 'block';
+}
+
+function populateAdvanceTravelers() {
+    var select = document.getElementById('advanceTrip');
+    var container = document.getElementById('advanceTravelers');
+    if (!select || !container) { return; }
+    var trip = allTrips.find(function(item) { return item.id === select.value; });
+    var group = trip && trip.groupId ? myGroups.find(function(item) { return item.id === trip.groupId; }) : null;
+    var members = group && group.members ? group.members : [{ uid: currentUser ? currentUser.uid : 'me', name: currentUser && currentUser.displayName ? currentUser.displayName : 'Me' }];
+    container.innerHTML = members.map(function(member, index) {
+        return '<label class="split-member"><input type="radio" name="advanceTraveler" value="' + member.uid + '" data-name="' + member.name + '" ' + (index === 0 ? 'checked' : '') + '><span>' + member.name + '</span></label>';
+    }).join('');
+}
+
+function closeAdvanceForm() {
+    var form = document.getElementById('advanceForm');
+    if (form) { form.style.display = 'none'; }
+}
+
+function saveAdvancePayment() {
+    var tripId = document.getElementById('advanceTrip').value;
+    var date = document.getElementById('advanceDate').value;
+    var amount = parseFloat(document.getElementById('advanceAmount').value);
+    var selected = document.querySelector('input[name="advanceTraveler"]:checked');
+    var note = document.getElementById('advanceNote').value.trim();
+    var trip = allTrips.find(function(item) { return item.id === tripId; });
+    if (!trip || !selected) { toast('Select a traveler!', 'warn'); return; }
+    if (!date) { toast('Select a date!', 'warn'); return; }
+    if (!amount || amount <= 0) { toast('Enter a valid advance amount!', 'warn'); return; }
+    if (!trip.advances) { trip.advances = []; }
+    trip.advances.push({ id: 'advance_' + Date.now(), date: date, amount: amount, travelerUid: selected.value, travelerName: selected.getAttribute('data-name'), note: note });
+    saveTripsLocal();
+    document.getElementById('advanceAmount').value = '';
+    document.getElementById('advanceNote').value = '';
+    closeAdvanceForm();
+    renderAllExpenses();
+    toast('Advance payment recorded and deducted from the report.', 'ok');
 }
 
 function markDailyCollected() {

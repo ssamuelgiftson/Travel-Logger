@@ -302,7 +302,19 @@
         <div class="statcard"><span class="bignum" id="totalOwedToMe">₹0</span><span>Owed to Me</span></div>
     </div>
     <div class="infobox"><h3>📊 By Category</h3><div id="categoryChart" class="category-chart"></div></div>
-    <div class="infobox"><div class="pghead" style="margin-bottom:10px;"><h3>🧾 Daily Cash Report</h3><input type="date" id="reportDate" class="forminput report-date" onchange="renderDailyReport()"></div><div id="dailyReport"></div></div>
+    <div class="infobox">
+        <div class="pghead" style="margin-bottom:10px;"><h3>🧾 Daily Cash Report</h3><input type="date" id="reportDate" class="forminput report-date" onchange="renderDailyReport()"></div>
+        <div id="dailyReport"></div>
+        <button class="btn" onclick="openAdvanceForm()">➕ Record Advance Payment</button>
+        <div id="advanceForm" class="advance-form" style="display:none;">
+            <h4>Record Advance Payment</h4>
+            <label>Trip *</label><select id="advanceTrip" class="forminput" onchange="populateAdvanceTravelers()"></select>
+            <div class="tworow"><div><label>Date *</label><input type="date" id="advanceDate" class="forminput"></div><div><label>Amount *</label><input type="number" id="advanceAmount" class="forminput" min="0.01" step="0.01" placeholder="e.g. 1000"></div></div>
+            <label>Traveler who paid *</label><div id="advanceTravelers" class="split-members"></div>
+            <label>Note</label><input type="text" id="advanceNote" class="forminput" placeholder="e.g. Paid advance for hotel">
+            <div class="btnrow"><button class="btn primary" onclick="saveAdvancePayment()">💾 Save Advance</button><button class="btn" onclick="closeAdvanceForm()">Cancel</button></div>
+        </div>
+    </div>
     <div class="infobox"><h3>📋 All Transactions</h3><div id="allExpensesList"></div></div>
 </div>
 
